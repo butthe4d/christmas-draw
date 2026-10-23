@@ -114,6 +114,7 @@ func TestValidateProblems(t *testing.T) {
 base_url: "ftp://x"
 greeting: "Hi 🎄"
 language: de
+dry_run: false
 default_country_code: "48"
 max_result_segments: 0
 people:
@@ -254,5 +255,43 @@ func TestErrorsAreMsgs(t *testing.T) {
 	}
 	if _, err := Parse([]byte("people: [")); !errors.As(err, &m) || m.Key != "config.yaml_invalid" {
 		t.Errorf("got %v", err)
+	}
+}
+
+func TestNormalizePhoneStripsTrunkZero(t *testing.T) {
+	cases := []struct{ in, cc, want string }{
+		{"07700 900123", "+44", "+447700900123"},
+		{"600100200", "+48", "+48600100200"},
+		{"0048600100200", "+48", "+48600100200"},
+		{"0048600100200", "+44", "+48600100200"},
+		{"+44 07700 900123", "+48", "+4407700900123"}, // explicit prefix: left alone
+	}
+	for _, c := range cases {
+		got, err := NormalizePhone(c.in, c.cc)
+		if err != nil || got != c.want {
+			t.Errorf("NormalizePhone(%q, %q) = %q, %v; want %q", c.in, c.cc, got, err, c.want)
+		}
+	}
+}
+
+func TestSMSTokenOnlyRequiredWhenSending(t *testing.T) {
+	t.Setenv(EnvToken, "")
+	noToken := strings.Replace(minimal, "sms:\n  token: tok\n", "", 1)
+	if _, err := Parse([]byte(noToken)); err != nil { // dry_run defaults to true
+		t.Fatalf("dry run without token: %v", err)
+	}
+	_, err := Parse([]byte("dry_run: false\n" + noToken))
+	if keys(err)["config.sms_token"] != 1 {
+		t.Fatalf("live without token: %v", err)
+	}
+}
+
+func TestCurrency(t *testing.T) {
+	if c := mustParse(t, minimal); c.SMS.Currency != "PLN" {
+		t.Errorf("default currency %q", c.SMS.Currency)
+	}
+	c := mustParse(t, strings.Replace(minimal, "token: tok", "token: tok\n  currency: EUR", 1))
+	if c.SMS.Currency != "EUR" {
+		t.Errorf("currency %q", c.SMS.Currency)
 	}
 }

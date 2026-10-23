@@ -89,8 +89,8 @@ type outgoing struct {
 	masked   string
 }
 
-// infeasibleMsg converts a draw.Feasible error into a message.
-func infeasibleMsg(err error) *locale.Msg {
+// InfeasibleMsg converts a draw.Feasible error into a message.
+func InfeasibleMsg(err error) *locale.Msg {
 	if err == nil {
 		return nil
 	}
@@ -110,9 +110,9 @@ func infeasibleMsg(err error) *locale.Msg {
 	return &m
 }
 
-// messageProblem converts a message.Render error into a message about the
+// MessageProblem converts a message.Render error into a message about the
 // SMS of the given kind.
-func messageProblem(kind string, err error) locale.Msg {
+func MessageProblem(kind string, err error) locale.Msg {
 	var long *message.TooLongError
 	var bad *message.NotGSMError
 	switch {
@@ -144,7 +144,7 @@ func (r *Round) build(kind, tmpl string, maxSeg int, people []store.Person) ([]o
 				continue
 			}
 		}
-		m := messageProblem(kind, err)
+		m := MessageProblem(kind, err)
 		if k := m.In("en"); !seen[k] {
 			seen[k] = true
 			problems = append(problems, m)
@@ -446,6 +446,9 @@ func (r *Round) SendTestSMS(ctx context.Context) (TestResult, error) {
 	if r.cfg.OrganiserPhone == "" {
 		return TestResult{}, locale.M("send.no_organiser_phone")
 	}
+	if r.cfg.SMS.Token == "" {
+		return TestResult{}, locale.M("send.no_token")
+	}
 	ctx, cancel := detach(ctx)
 	defer cancel()
 	code, err := randCode(r.opts.Rand)
@@ -458,7 +461,7 @@ func (r *Round) SendTestSMS(ctx context.Context) (TestResult, error) {
 	})
 	text, err := message.Render(raw, nil, testMaxSegments)
 	if err != nil {
-		return TestResult{}, messageProblem(kindTest, err)
+		return TestResult{}, MessageProblem(kindTest, err)
 	}
 	res, err := r.snd.Send(ctx, sender.SMS{To: r.cfg.OrganiserPhone, Text: text})
 	if err != nil {
@@ -555,7 +558,7 @@ func (r *Round) Overview(ctx context.Context) (Overview, error) {
 			notice = ids
 		}
 	}
-	ov := Overview{LastTest: lastTest, State: state, DryRun: r.cfg.DryRun, Infeasible: infeasibleMsg(draw.Feasible(r.rules()))}
+	ov := Overview{LastTest: lastTest, State: state, DryRun: r.cfg.DryRun, Infeasible: InfeasibleMsg(draw.Feasible(r.rules()))}
 	for _, p := range people {
 		ps := PersonStatus{ID: p.ID, Name: p.Name, Items: counts[p.ID], Greeted: p.Greeted, CanResendNotice: notice[p.ID]}
 		if m, ok := last[p.ID]; ok {

@@ -1,7 +1,7 @@
 {{define "preview"}}
 {{if .}}
 <div class="preview">
-<p><strong>{{t "admin.preview.summary" "messages" (printf "%d" .Messages) "segments" (printf "%d" .Segments) "cost" (printf "%.2f" .Cost)}}</strong>{{if .CostEstimated}} <em>{{t "admin.preview.estimated"}}</em>{{end}}</p>
+<p><strong>{{t "admin.preview.summary" "messages" (printf "%d" .Messages) "segments" (printf "%d" .Segments) "cost" (printf "%.2f" .Cost) "currency" .Currency}}</strong>{{if .CostEstimated}} <em>{{t "admin.preview.estimated"}}</em>{{end}}</p>
 {{if .Sample}}<p class="muted">{{t "admin.preview.sample"}}</p><pre class="sample">{{.Sample}}</pre>{{end}}
 {{range .ProblemText}}<p class="error" role="alert">{{.}}</p>
 {{end}}

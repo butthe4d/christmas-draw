@@ -68,7 +68,7 @@ func (r *Round) resultBatch(ctx context.Context, people []store.Person, pairs ma
 			masked, err = render(message.MaskedToken)
 		}
 		if err != nil {
-			m := messageProblem(kindResult, err)
+			m := MessageProblem(kindResult, err)
 			if k := m.In("en"); !seen[k] {
 				seen[k] = true
 				problems = append(problems, m)
@@ -101,7 +101,7 @@ func (r *Round) Draw(ctx context.Context) (DrawOutcome, error) {
 		problems = append(problems, locale.M("draw.empty_list", "name", p.Name))
 	}
 	rules := r.rules()
-	if m := infeasibleMsg(draw.Feasible(rules)); m != nil {
+	if m := InfeasibleMsg(draw.Feasible(rules)); m != nil {
 		return DrawOutcome{Problems: append(problems, *m)}, nil
 	}
 	a, err := draw.Draw(rules, r.opts.Rand)
@@ -310,7 +310,7 @@ func (r *Round) planChange(ctx context.Context, text string) (changePlan, error)
 			newcomers = append(newcomers, store.Person{Name: cp.Name, Phone: cp.Phone, Token: message.MaskedToken})
 		}
 	}
-	if m := infeasibleMsg(draw.Feasible(r.rules())); m != nil {
+	if m := InfeasibleMsg(draw.Feasible(r.rules())); m != nil {
 		pl.problems = append(pl.problems, *m)
 	}
 	var p1, p2 []locale.Msg

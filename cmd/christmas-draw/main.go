@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -125,19 +124,28 @@ func runCheck(o options, stdout, stderr io.Writer) int {
 	lang := langOf(cfg)
 	var problems []locale.Msg
 
+	// Let the organiser verify every number as it will be dialled.
+	for _, p := range cfg.People {
+		phone, err := config.NormalizePhone(p.Phone, cfg.DefaultCountryCode)
+		if err != nil {
+			phone = p.Phone
+		}
+		fmt.Fprintln(stdout, locale.M("cli.person_line", "name", p.Name, "phone", phone).In(lang))
+	}
+
 	names := make([]string, len(cfg.People))
 	for i, p := range cfg.People {
 		names[i] = p.Name
 	}
 	rules := draw.NewRules(names, cfg.Couples, cfg.Exclusions, cfg.ExcludeCouples)
-	if err := draw.Feasible(rules); err != nil {
-		problems = append(problems, infeasibleMsg(err))
+	if m := round.InfeasibleMsg(draw.Feasible(rules)); m != nil {
+		problems = append(problems, *m)
 	}
 	if len(cfg.People) > 0 {
 		link := message.Link(cfg.BaseURL, message.MaskedToken)
 		vars := map[string]string{"name": cfg.People[0].Name, "link": link}
 		if _, err := message.Render(cfg.Greeting, vars, 2); err != nil {
-			problems = append(problems, greetingMsg(err))
+			problems = append(problems, round.MessageProblem("greeting", err))
 		}
 	}
 	if len(problems) > 0 {
@@ -150,32 +158,8 @@ func runCheck(o options, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func infeasibleMsg(err error) locale.Msg {
-	var ie *draw.InfeasibleError
-	if errors.As(err, &ie) {
-		if len(ie.Receivers) == 0 && len(ie.Givers) > 0 {
-			return locale.M("draw.nobody_allowed", "name", ie.Givers[0])
-		}
-		return locale.M("draw.infeasible",
-			"givers", strings.Join(ie.Givers, ", "),
-			"receivers", strings.Join(ie.Receivers, ", "))
-	}
-	return locale.M("draw.error", "error", err.Error())
-}
-
-func greetingMsg(err error) locale.Msg {
-	const kind = "greeting"
-	var long *message.TooLongError
-	var bad *message.NotGSMError
-	switch {
-	case errors.As(err, &long):
-		return locale.M("problem.sms_too_long", "kind", kind,
-			"segments", strconv.Itoa(long.Segments), "max", strconv.Itoa(long.Max))
-	case errors.As(err, &bad):
-		return locale.M("problem.sms_not_gsm", "kind", kind, "chars", string(bad.Runes))
-	}
-	return locale.M("problem.sms_error", "kind", kind, "error", err.Error())
-}
+// dryRunLogPath is the dry-run log, next to the database.
+func dryRunLogPath(db string) string { return filepath.Join(filepath.Dir(db), "dry-run.log") }
 
 func runReset(o options, stdin io.Reader, stdout, stderr io.Writer) int {
 	lang := quietLang(o.config)
@@ -194,6 +178,11 @@ func runReset(o options, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	defer st.Close()
 	if err := st.Reset(context.Background()); err != nil {
+		fmt.Fprintln(stderr, locale.M("cli.error", "error", err.Error()).In(lang))
+		return 1
+	}
+	// The dry-run log may hold draw pairs: a fresh year starts without it.
+	if err := os.Remove(dryRunLogPath(o.db)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(stderr, locale.M("cli.error", "error", err.Error()).In(lang))
 		return 1
 	}
@@ -254,7 +243,7 @@ func runServe(o options, stdout, stderr io.Writer) int {
 	defer st.Close()
 
 	snd := sender.NewGSMService(cfg.SMS.Token, cfg.SMS.Sender, cfg.SMS.Server)
-	dry := sender.DryRunLog{Path: filepath.Join(filepath.Dir(o.db), "dry-run.log")}
+	dry := sender.DryRunLog{Path: dryRunLogPath(o.db)}
 	r := round.New(cfg, st, snd, dry, round.Options{})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

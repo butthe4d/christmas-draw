@@ -54,8 +54,13 @@ func exec(args []string, stdin string) (code int, out, errOut string) {
 func TestCheckOK(t *testing.T) {
 	cfg, db := setup(t, baseCfg+peopleCfg)
 	code, out, _ := exec([]string{"check", "-config", cfg, "-db", db}, "")
-	if code != 0 || strings.TrimSpace(out) != "OK" {
+	if code != 0 || !strings.HasSuffix(strings.TrimSpace(out), "OK") {
 		t.Fatalf("code=%d out=%q", code, out)
+	}
+	for _, want := range []string{"Maciej: +48600100200", "Ania: +48600100201", "Tomek: +48600100202"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("check output lacks %q: %q", want, out)
+		}
 	}
 	if _, err := os.Stat(db); !os.IsNotExist(err) {
 		t.Fatalf("check must not create the DB file, stat err=%v", err)
@@ -173,5 +178,31 @@ func TestAdminLink(t *testing.T) {
 func TestUnknownCommand(t *testing.T) {
 	if code, _, errOut := exec([]string{"bogus"}, ""); code != 2 || !strings.Contains(errOut, "bogus") {
 		t.Fatalf("code=%d err=%q", code, errOut)
+	}
+}
+
+func TestResetRemovesDryRunLog(t *testing.T) {
+	cfg, db := setup(t, baseCfg+peopleCfg)
+	seed(t, cfg, db)
+	log := filepath.Join(filepath.Dir(db), "dry-run.log")
+	if err := os.WriteFile(log, []byte("pairs?"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"reset", "-config", cfg, "-db", db}
+	if code, _, _ := exec(args, "no\n"); code == 0 {
+		t.Fatal("declined reset succeeded")
+	}
+	if _, err := os.Stat(log); err != nil {
+		t.Fatal("declined reset removed the dry-run log")
+	}
+	if code, _, _ := exec(args, "reset\n"); code != 0 {
+		t.Fatal("reset failed")
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatalf("dry-run log still there: %v", err)
+	}
+	// No log at all is fine.
+	if code, _, _ := exec(append(args, "-yes"), ""); code != 0 {
+		t.Fatal("reset without a log failed")
 	}
 }

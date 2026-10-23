@@ -39,3 +39,4 @@ sms:
   sender: ""                     # optional sender name
   server: prod                   # prod | sandbox
   price_per_segment: 0.14        # for cost estimates
+  currency: PLN                  # shown next to costs; default PLN

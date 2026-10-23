@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/butthe4d/christmas-draw/internal/locale"
 	"github.com/butthe4d/christmas-draw/internal/message"
 	"github.com/butthe4d/christmas-draw/internal/sender"
 	"github.com/butthe4d/christmas-draw/internal/store"
@@ -483,5 +484,18 @@ func TestRecordErrorDoesNotStopBatch(t *testing.T) {
 	}
 	if !personByName(t, st, "Maciej").Greeted {
 		t.Error("Maciej not greeted")
+	}
+}
+
+func TestSendTestSMSWithoutToken(t *testing.T) {
+	yaml := strings.Replace(testYAML("organiser_phone: \"+48600999999\"\n", pMaciej, pAnia, pTomek),
+		"dry_run: false", "dry_run: true", 1)
+	yaml = strings.Replace(yaml, "sms:\n  token: tok\n", "", 1)
+	r, _, fake, _ := newTestRound(t, yaml)
+	mustSync(t, r)
+	_, err := r.SendTestSMS(context.Background())
+	var m locale.Msg
+	if !errors.As(err, &m) || m.Key != "send.no_token" || len(fake.Sent) != 0 {
+		t.Fatalf("err=%v sent=%d", err, len(fake.Sent))
 	}
 }

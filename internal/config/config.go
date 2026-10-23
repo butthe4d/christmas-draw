@@ -24,6 +24,7 @@ type Person struct{ Name, Phone string }
 type SMS struct {
 	Provider, Token, Sender, Server string // Server: "prod" | "sandbox"
 	PricePerSegment                 float64
+	Currency                        string // shown next to costs; default PLN
 }
 
 type Config struct {
@@ -72,6 +73,7 @@ type rawConfig struct {
 		Sender          string   `yaml:"sender"`
 		Server          string   `yaml:"server"`
 		PricePerSegment *float64 `yaml:"price_per_segment"`
+		Currency        string   `yaml:"currency"`
 	} `yaml:"sms"`
 }
 
@@ -111,10 +113,14 @@ func Parse(data []byte) (*Config, error) {
 			Sender:          strings.TrimSpace(r.SMS.Sender),
 			Server:          strings.TrimSpace(r.SMS.Server),
 			PricePerSegment: 0.14,
+			Currency:        strings.TrimSpace(r.SMS.Currency),
 		},
 	}
 	if r.MaxResultSegments != nil {
 		c.MaxResultSegments = *r.MaxResultSegments
+	}
+	if c.SMS.Currency == "" {
+		c.SMS.Currency = "PLN"
 	}
 	if r.SMS.PricePerSegment != nil {
 		c.SMS.PricePerSegment = *r.SMS.PricePerSegment
@@ -186,7 +192,8 @@ func NormalizePhone(s, defaultCountryCode string) (string, error) {
 	case strings.HasPrefix(n, "00"):
 		n = "+" + n[2:]
 	case defaultCountryCode != "":
-		n = defaultCountryCode + n
+		// A national number may carry one trunk "0" that is dropped abroad.
+		n = defaultCountryCode + strings.TrimPrefix(n, "0")
 	}
 	if !phoneRE.MatchString(n) {
 		return "", locale.M("config.phone_invalid_number", "phone", s)
@@ -225,7 +232,7 @@ func (c *Config) Validate() error {
 	if c.SMS.Server != "prod" && c.SMS.Server != "sandbox" {
 		add("config.sms_server", "value", c.SMS.Server)
 	}
-	if c.SMS.Token == "" {
+	if c.SMS.Token == "" && !c.DryRun { // dry-run sends nothing, except the SMS test, which checks itself
 		add("config.sms_token", "env", EnvToken)
 	}
 	if c.OrganiserPhone != "" {

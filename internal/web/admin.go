@@ -45,6 +45,7 @@ func init() {
 type previewView struct {
 	round.Preview
 	ProblemText []string
+	Currency    string
 }
 
 type flashView struct {
@@ -114,7 +115,7 @@ func (s *server) msgs(lang string, ms []locale.Msg) []string {
 }
 
 func (s *server) view(lang string, p round.Preview) *previewView {
-	return &previewView{Preview: p, ProblemText: s.msgs(lang, p.Problems)}
+	return &previewView{Preview: p, ProblemText: s.msgs(lang, p.Problems), Currency: s.cfg.SMS.Currency}
 }
 
 func (s *server) adminPage(w http.ResponseWriter, req *http.Request, lang, tok string) {
