@@ -289,10 +289,13 @@ func (s *server) adminTestSMS(w http.ResponseWriter, req *http.Request, lang, to
 
 func (s *server) adminDraw(w http.ResponseWriter, req *http.Request, lang, tok string) {
 	// Drawing again replaces the sealed draw, so it needs confirmation.
-	if st, err := s.r.State(req.Context()); err == nil && st == round.Drawn {
-		if !s.confirmed(w, req, lang, tok, adminExtra{}) {
-			return
-		}
+	st, err := s.r.State(req.Context())
+	if err != nil {
+		s.fail(w, lang, err)
+		return
+	}
+	if st == round.Drawn && !s.confirmed(w, req, lang, tok, adminExtra{}) {
+		return
 	}
 	out, err := s.r.Draw(req.Context())
 	switch {

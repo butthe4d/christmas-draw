@@ -336,8 +336,20 @@ func TestAdminFailedNamesWithCommas(t *testing.T) {
 	e := newEnv(t, yaml)
 	e.fake.FailTo = map[string]bool{"+48600100300": true}
 	w := e.ap("/greetings", yes)
-	body := e.ag(w.Header().Get("Location")[len("/admin/"+e.admin):])
-	if !strings.Contains(body, "Tomek, Jr") {
-		t.Errorf("failed name with comma lost; location %q", w.Header().Get("Location"))
+	loc, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loc.Query()["failed"]; len(got) != 1 || got[0] != "Tomek, Jr" {
+		t.Fatalf("failed params = %q", got)
+	}
+	body := e.ag(strings.TrimPrefix(loc.String(), "/admin/"+e.admin))
+	i := strings.Index(body, `class="flash"`)
+	if i < 0 {
+		t.Fatal("no flash shown")
+	}
+	flash := body[i : i+strings.Index(body[i:], "</p>")]
+	if !strings.Contains(flash, "Tomek, Jr") {
+		t.Errorf("flash lacks full failed name: %q", flash)
 	}
 }
