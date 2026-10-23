@@ -38,7 +38,7 @@
   "send.test_failed": "The test SMS failed: {error}",
   "draw.empty_list": "{name} has not added anything to their wish list yet.",
   "draw.no_pairs": "There is no saved draw.",
-  "draw.invariant": "The draw failed its safety check: {error}",
+  "draw.invariant": "The draw failed its safety check. Nothing was saved; try again.",
   "draw.person_missing": "The draw refers to a person who is no longer in the group.",
   "app.title": "Christmas Gift Draw",
   "app.language": "Language",

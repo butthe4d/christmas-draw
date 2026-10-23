@@ -109,7 +109,8 @@ func (r *Round) Draw(ctx context.Context) (DrawOutcome, error) {
 		return DrawOutcome{}, err
 	}
 	if err := draw.Check(rules, a); err != nil {
-		return DrawOutcome{}, locale.M("draw.invariant", "error", err.Error())
+		// The detail may name pairs: keep it out of the message and the logs.
+		return DrawOutcome{}, locale.M("draw.invariant")
 	}
 	ids := map[string]int64{}
 	for _, p := range people {

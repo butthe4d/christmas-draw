@@ -39,10 +39,11 @@ var replacer = strings.NewReplacer(
 )
 
 // Transliterate replaces typographic punctuation and accented letters that
-// GSM-7 cannot encode with plain equivalents. Characters already encodable,
+// GSM-7 cannot encode with plain equivalents. The input is NFC-normalized
+// first, so decomposed letters (a + combining ogonek) behave like composed ones. Characters already encodable,
 // or with no known equivalent, are left unchanged.
 func Transliterate(s string) string {
-	s = replacer.Replace(s)
+	s = replacer.Replace(norm.NFC.String(s))
 	var b strings.Builder
 	for _, r := range s {
 		if encodable(r) {

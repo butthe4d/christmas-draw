@@ -625,3 +625,11 @@ func TestResendChangeNoticeSurvivesClientDisconnect(t *testing.T) {
 		t.Error("not recorded")
 	}
 }
+
+func TestInvariantMessageNamesNobody(t *testing.T) {
+	for _, lang := range []string{"en", "pl"} {
+		if txt := locale.M("draw.invariant").In(lang); txt == "draw.invariant" || strings.Contains(txt, "{") {
+			t.Errorf("%s: %q", lang, txt)
+		}
+	}
+}

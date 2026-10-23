@@ -38,7 +38,7 @@
   "send.test_failed": "SMS testowy się nie powiódł: {error}",
   "draw.empty_list": "{name} nie dodał(a) jeszcze nic do swojej listy życzeń.",
   "draw.no_pairs": "Nie ma zapisanego losowania.",
-  "draw.invariant": "Losowanie nie przeszło kontroli poprawności: {error}",
+  "draw.invariant": "Losowanie nie przeszło kontroli poprawności. Nic nie zapisano, spróbuj ponownie.",
   "draw.person_missing": "Losowanie wskazuje osobę, której nie ma już w grupie.",
   "app.title": "Losowanie prezentów",
   "app.language": "Język",
