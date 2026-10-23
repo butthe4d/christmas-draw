@@ -54,6 +54,8 @@ type Round struct {
 	dry  sender.DryRunLog
 	opts Options
 	mu   sync.Mutex // held by every exported method; also serializes SQLite writes
+
+	lastRefresh time.Time // last RefreshStatuses gateway call; guarded by mu
 }
 
 func New(cfg *config.Config, st *store.Store, snd sender.Sender, dry sender.DryRunLog, o Options) *Round {
@@ -117,6 +119,11 @@ func (r *Round) names() []string {
 func (r *Round) Rules() draw.Rules {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.rules()
+}
+
+// rules is Rules without locking, for use inside locked methods.
+func (r *Round) rules() draw.Rules {
 	return draw.NewRules(r.names(), r.cfg.Couples, r.cfg.Exclusions, r.cfg.ExcludeCouples)
 }
 

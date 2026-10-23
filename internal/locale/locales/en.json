@@ -25,5 +25,14 @@
   "config.exclusion_unknown": "Exclusion refers to unknown person \"{name}\".",
   "config.read_failed": "Cannot read config file {path}: {error}",
   "config.yaml_invalid": "Invalid config file: {error}",
-  "config.phone_invalid_number": "\"{phone}\" is not a valid phone number."
+  "config.phone_invalid_number": "\"{phone}\" is not a valid phone number.",
+  "draw.nobody_allowed": "{name} has nobody they are allowed to draw.",
+  "draw.infeasible": "{givers} can only draw from {receivers}, which is not enough people.",
+  "draw.error": "The draw cannot be checked: {error}",
+  "problem.sms_too_long": "The {kind} SMS needs {segments} segments, the maximum is {max}.",
+  "problem.sms_not_gsm": "The {kind} SMS contains characters that cannot be sent: {chars}",
+  "problem.sms_error": "The {kind} SMS cannot be built: {error}",
+  "send.all_failed": "All {count} SMS failed. First error: {error}",
+  "send.no_organiser_phone": "organiser_phone is not set, so the test SMS has nowhere to go.",
+  "send.test_failed": "The test SMS failed: {error}"
 }

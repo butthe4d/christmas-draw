@@ -25,5 +25,14 @@
   "config.exclusion_unknown": "Wykluczenie odwołuje się do nieznanej osoby \"{name}\".",
   "config.read_failed": "Nie można odczytać pliku konfiguracji {path}: {error}",
   "config.yaml_invalid": "Nieprawidłowy plik konfiguracji: {error}",
-  "config.phone_invalid_number": "\"{phone}\" nie jest poprawnym numerem telefonu."
+  "config.phone_invalid_number": "\"{phone}\" nie jest poprawnym numerem telefonu.",
+  "draw.nobody_allowed": "{name} nie ma nikogo, kogo może wylosować.",
+  "draw.infeasible": "{givers} mogą losować tylko spośród: {receivers}, a to za mało osób.",
+  "draw.error": "Nie można sprawdzić losowania: {error}",
+  "problem.sms_too_long": "SMS (rodzaj: {kind}) wymaga {segments} części, maksimum to {max}.",
+  "problem.sms_not_gsm": "SMS (rodzaj: {kind}) zawiera znaki, których nie można wysłać: {chars}",
+  "problem.sms_error": "Nie można przygotować SMS-a (rodzaj: {kind}): {error}",
+  "send.all_failed": "Wszystkie SMS-y ({count}) się nie powiodły. Pierwszy błąd: {error}",
+  "send.no_organiser_phone": "Brak organiser_phone, więc SMS testowy nie ma dokąd pójść.",
+  "send.test_failed": "SMS testowy się nie powiódł: {error}"
 }
