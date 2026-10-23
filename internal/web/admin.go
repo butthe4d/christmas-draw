@@ -23,8 +23,23 @@ var flashKeys = map[string]bool{
 	"admin.flash.draw_done":      true,
 	"admin.flash.draw_dry":       true,
 	"admin.flash.change_sent":    true,
+	"admin.flash.notice_sent":    true,
+	"admin.flash.test_sent":      true,
 	"admin.flash.wrong_state":    true,
 	"admin.flash.error":          true,
+}
+
+// dryRunKeys are the flash wordings for batches that only went to the dry-run log.
+var dryRunKeys = []string{
+	"admin.flash.greetings_sent", "admin.flash.reminders_sent", "admin.flash.greeting_sent",
+	"admin.flash.result_sent", "admin.flash.results_sent", "admin.flash.change_sent",
+	"admin.flash.notice_sent",
+}
+
+func init() {
+	for _, k := range dryRunKeys {
+		flashKeys[k+"_dryrun"] = true
+	}
 }
 
 type previewView struct {
@@ -35,6 +50,8 @@ type previewView struct {
 type flashView struct {
 	Key    string
 	N      string
+	ID     string // provider ID of the SMS test
+	To     string // the organiser's number, from the config
 	Failed []string
 }
 
@@ -47,7 +64,7 @@ type adminData struct {
 	Flash        *flashView
 	Errors       []string
 	NeedConfirm  bool
-	Test         *round.TestResult
+	LastTestAt   string
 	DrawProblems []string
 	Greetings    *previewView
 	Reminders    *previewView
@@ -62,7 +79,6 @@ type adminData struct {
 type adminExtra struct {
 	errs         []string
 	needConfirm  bool
-	test         *round.TestResult
 	drawProblems []string
 	change       *previewView
 	changeText   string
@@ -117,7 +133,7 @@ func (s *server) showAdmin(w http.ResponseWriter, req *http.Request, lang, tok s
 	}
 	d := adminData{
 		base: s.newBase(lang, "/admin/"+tok), Token: tok, Ov: ov,
-		Errors: x.errs, NeedConfirm: x.needConfirm, Test: x.test,
+		Errors: x.errs, NeedConfirm: x.needConfirm,
 		DrawProblems: x.drawProblems, Change: x.change, ChangeText: x.changeText,
 	}
 	if d.ChangeText == "" {
@@ -134,6 +150,12 @@ func (s *server) showAdmin(w http.ResponseWriter, req *http.Request, lang, tok s
 		d.UnsealedTime = ov.UnsealedAt.Local().Format("15:04")
 	}
 	d.Flash = flashFrom(req, ov)
+	if d.Flash != nil {
+		d.Flash.To = s.cfg.OrganiserPhone
+	}
+	if ov.LastTest != nil {
+		d.LastTestAt = ov.LastTest.SentAt.Local().Format("2006-01-02 15:04")
+	}
 
 	pv := func(p round.Preview, err error) *previewView {
 		if err != nil {
@@ -171,6 +193,9 @@ func flashFrom(req *http.Request, ov round.Overview) *flashView {
 		n = 0
 	}
 	f := &flashView{Key: key, N: strconv.Itoa(n)}
+	if id, err := strconv.ParseInt(q.Get("id"), 10, 64); err == nil && id > 0 {
+		f.ID = strconv.FormatInt(id, 10)
+	}
 	known := map[string]bool{}
 	for _, p := range ov.People {
 		known[p.Name] = true
@@ -224,6 +249,9 @@ func (s *server) outcome(w http.ResponseWriter, req *http.Request, lang, tok, ke
 		s.actionError(w, req, lang, tok, err)
 		return
 	}
+	if out.DryRun {
+		key += "_dryrun"
+	}
 	s.redirect(w, req, tok, key, out.Sent, out.Failed)
 }
 
@@ -274,6 +302,19 @@ func (s *server) adminResendResult(w http.ResponseWriter, req *http.Request, lan
 	s.outcome(w, req, lang, tok, "admin.flash.result_sent", out, err)
 }
 
+func (s *server) adminResendChangeNotice(w http.ResponseWriter, req *http.Request, lang, tok string) {
+	id, ok := personID(req)
+	if !ok {
+		s.actionError(w, req, lang, tok, store.ErrNotFound)
+		return
+	}
+	if !s.confirmed(w, req, lang, tok, adminExtra{}) {
+		return
+	}
+	out, err := s.r.ResendChangeNotice(req.Context(), id)
+	s.outcome(w, req, lang, tok, "admin.flash.notice_sent", out, err)
+}
+
 func (s *server) adminTestSMS(w http.ResponseWriter, req *http.Request, lang, tok string) {
 	if !s.confirmed(w, req, lang, tok, adminExtra{}) {
 		return
@@ -283,8 +324,8 @@ func (s *server) adminTestSMS(w http.ResponseWriter, req *http.Request, lang, to
 		s.actionError(w, req, lang, tok, err)
 		return
 	}
-	res.Text = "" // the page shows where it went and its status, not the text
-	s.showAdmin(w, req, lang, tok, http.StatusOK, adminExtra{test: &res})
+	// Post-redirect-get: a refresh must never send another paid SMS.
+	http.Redirect(w, req, "/admin/"+tok+"?msg=admin.flash.test_sent&id="+strconv.FormatInt(res.ProviderID, 10), http.StatusSeeOther)
 }
 
 func (s *server) adminDraw(w http.ResponseWriter, req *http.Request, lang, tok string) {

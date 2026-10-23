@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -265,14 +266,6 @@ func TestAdminChangeFlow(t *testing.T) {
 	}
 }
 
-func TestAdminSMSTest(t *testing.T) {
-	e := newEnv(t, strings.Replace(baseYAML, "dry_run: false", "dry_run: false\norganiser_phone: \"+48600999999\"", 1))
-	w := e.ap("/test-sms", yes)
-	if w.Code != http.StatusOK || !strings.Contains(html.UnescapeString(w.Body.String()), "+48600999999") || len(e.fake.Sent) != 1 {
-		t.Fatalf("test sms: %d sent %d", w.Code, len(e.fake.Sent))
-	}
-}
-
 func TestAdminDryRunBanner(t *testing.T) {
 	e := newEnv(t, strings.Replace(baseYAML, "dry_run: false", "dry_run: true", 1))
 	body := e.ag("")
@@ -351,5 +344,67 @@ func TestAdminFailedNamesWithCommas(t *testing.T) {
 	flash := body[i : i+strings.Index(body[i:], "</p>")]
 	if !strings.Contains(flash, "Tomek, Jr") {
 		t.Errorf("flash lacks full failed name: %q", flash)
+	}
+}
+
+func TestAdminResendChangeNotice(t *testing.T) {
+	e := newEnv(t, fourYAML)
+	e.ap("/greetings", yes)
+	e.addItems(t)
+	e.ap("/draw", url.Values{})
+	e.ap("/results", yes)
+	e.reconfigure(t, strings.Replace(fourYAML, "  - { name: \"Ola\", phone: \"+48600100400\" }\n", "", 1))
+	e.fake.FailTo = map[string]bool{"+48600100200": true}
+	e.ap("/change", url.Values{"action": {"send"}, "text": {"Plan changed."}, "confirm": {"yes"}})
+	ania, _ := e.st.PersonByToken(context.Background(), e.tokens["Ania"])
+	path := "/people/" + strconv.FormatInt(ania.ID, 10) + "/change-notice"
+	if !strings.Contains(e.ag(""), "/admin/"+e.admin+path) {
+		t.Fatal("resend change notice button missing")
+	}
+	e.fake.FailTo = nil
+	sent := len(e.fake.Sent)
+	if w := e.ap(path, url.Values{}); strings.Contains(w.Header().Get("Location"), "sent") || len(e.fake.Sent) != sent {
+		t.Fatal("sent without confirm")
+	}
+	w := e.ap(path, yes)
+	if w.Code != http.StatusSeeOther || len(e.fake.Sent) != sent+1 ||
+		e.fake.Sent[sent].To != "+48600100200" || !strings.HasPrefix(e.fake.Sent[sent].Text, "Plan changed.") {
+		t.Fatalf("resend: %d %+v", w.Code, e.fake.Sent[sent:])
+	}
+	e.ap("/draw", url.Values{})
+	if strings.Contains(e.ag(""), path) {
+		t.Error("button still shown after the draw")
+	}
+	e.ap(path, yes)
+	if len(e.fake.Sent) != sent+1 {
+		t.Error("resent after the draw")
+	}
+}
+
+func TestAdminSMSTestRedirectsAndShowsStatus(t *testing.T) {
+	e := newEnv(t, strings.Replace(baseYAML, "dry_run: false", "dry_run: false\norganiser_phone: \"+48600999999\"", 1))
+	w := e.ap("/test-sms", yes)
+	loc := w.Header().Get("Location")
+	if w.Code != http.StatusSeeOther || !strings.Contains(loc, "msg=admin.flash.test_sent") || len(e.fake.Sent) != 1 {
+		t.Fatalf("test sms: %d %q sent %d", w.Code, loc, len(e.fake.Sent))
+	}
+	body := html.UnescapeString(e.get(loc).Body.String())
+	if len(e.fake.Sent) != 1 {
+		t.Fatal("GET of the redirect re-sent the SMS")
+	}
+	if !strings.Contains(body, "+48600999999") || !strings.Contains(body, "QUEUED") {
+		t.Errorf("flash or last test status missing")
+	}
+}
+
+func TestAdminDryRunFlashWording(t *testing.T) {
+	e := newEnv(t, strings.Replace(baseYAML, "dry_run: false", "dry_run: true", 1))
+	w := e.ap("/greetings", yes)
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "msg=admin.flash.greetings_sent_dryrun") {
+		t.Fatalf("location %q", loc)
+	}
+	if body := e.get(loc).Body.String(); !strings.Contains(body, "dry-run log") || strings.Contains(body, "Greetings sent") {
+		t.Errorf("flash wording wrong")
 	}
 }

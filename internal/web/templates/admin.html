@@ -16,14 +16,14 @@
 <h1>{{t "admin.title"}}</h1>
 <p>{{t "admin.state.label"}}: <strong>{{t (printf "admin.state.%s" .Ov.State)}}</strong></p>
 {{if .Ov.DryRun}}<p class="frozen">{{t "admin.dryrun.banner"}} {{t "admin.dryrun.log"}}: <code>{{.DryLog}}</code></p>{{end}}
-{{with .Flash}}<p class="flash" role="status">{{t .Key "n" .N}}{{if .Failed}} {{t "admin.flash.failed"}}: {{range $i, $n := .Failed}}{{if $i}}, {{end}}{{$n}}{{end}}{{end}}</p>{{end}}
+{{with .Flash}}<p class="flash" role="status">{{t .Key "n" .N "id" .ID "to" .To}}{{if .Failed}} {{t "admin.flash.failed"}}: {{range $i, $n := .Failed}}{{if $i}}, {{end}}{{$n}}{{end}}{{end}}</p>{{end}}
 {{range .Errors}}<p class="error" role="alert">{{.}}</p>
 {{end}}
 {{if .NeedConfirm}}<p class="error" role="alert">{{t "admin.confirm.needed"}}</p>{{end}}
 {{if .DrawProblems}}<div role="alert"><p class="error">{{t "admin.draw.blocked"}}</p>
 {{range .DrawProblems}}<p class="error">{{.}}</p>
 {{end}}</div>{{end}}
-{{with .Test}}<p class="flash" role="status">{{t "admin.test.result" "to" .To "id" (printf "%d" .ProviderID) "status" .Status}}</p>{{end}}
+{{with .Ov.LastTest}}<p class="muted">{{t "admin.test.last" "id" (printf "%d" .ProviderID) "status" .Status "time" $.LastTestAt}}</p>{{end}}
 {{if .Ov.UnsealedAt}}<p class="frozen">{{t "admin.unsealed.notice" "date" .UnsealedDate "time" .UnsealedTime}}</p>{{end}}
 </section>
 
@@ -38,6 +38,7 @@
 <td>{{if .LastKind}}{{t (printf "admin.kind.%s" .LastKind)}}: {{.LastStatus}}{{else}}-{{end}}</td>
 <td>
 {{if ne $.Ov.State "SETUP"}}<form method="post" action="/admin/{{$.Token}}/people/{{.ID}}/greeting" class="inline">{{template "confirm" $}}<button type="submit">{{t "admin.resend.greeting"}}</button></form>{{end}}
+{{if .CanResendNotice}}<form method="post" action="/admin/{{$.Token}}/people/{{.ID}}/change-notice" class="inline">{{template "confirm" $}}<button type="submit">{{t "admin.resend.notice"}}</button></form>{{end}}
 {{if or (eq $.Ov.State "DELIVERED") (eq $.Ov.State "CHANGE_PENDING")}}<form method="post" action="/admin/{{$.Token}}/people/{{.ID}}/result" class="inline">{{template "confirm" $}}<button type="submit">{{t "admin.resend.result"}}</button></form>{{end}}
 </td>
 </tr>

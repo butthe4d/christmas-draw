@@ -553,3 +553,75 @@ func TestConfirmChangePartialEmergencyFailure(t *testing.T) {
 		t.Error("emergency not recorded for the two who got it")
 	}
 }
+
+func TestResendChangeNotice(t *testing.T) {
+	ctx := context.Background()
+	r, st, fake, _ := deliveredRound(t, defaultYAML)
+	reconfigure(t, r, testYAML("", pMaciej, pAnia, pTomek, pZenek))
+	mustSync(t, r)
+	fake.FailTo = map[string]bool{pAnia.Phone: true}
+	out, err := r.ConfirmChange(ctx, "Zmiana! {link}")
+	if err != nil || len(out.Failed) != 1 || out.Failed[0] != "Ania" {
+		t.Fatalf("%+v %v", out, err)
+	}
+	ania := personByName(t, st, "Ania")
+	zenek := personByName(t, st, "Zenek")
+
+	ov, _ := r.Overview(ctx)
+	for _, p := range ov.People {
+		if want := p.Name != "Zenek"; p.CanResendNotice != want {
+			t.Errorf("%s CanResendNotice=%v", p.Name, p.CanResendNotice)
+		}
+	}
+	// Newcomers got a greeting, not the emergency text.
+	if _, err := r.ResendChangeNotice(ctx, zenek.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("newcomer: %v", err)
+	}
+	fake.FailTo = nil
+	fake.Sent = nil
+	out, err = r.ResendChangeNotice(ctx, ania.ID)
+	if err != nil || out.Sent != 1 || len(fake.Sent) != 1 || fake.Sent[0].To != pAnia.Phone ||
+		fake.Sent[0].Text != "Zmiana! "+message.Link("https://x.test", ania.Token) {
+		t.Fatalf("%+v %v %+v", out, err, fake.Sent)
+	}
+	if _, err := r.ResendChangeNotice(ctx, 9999); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("unknown: %v", err)
+	}
+	// A successful draw ends the notice window.
+	addItems(t, st)
+	if d, err := r.Draw(ctx); err != nil || len(d.Problems) != 0 {
+		t.Fatalf("%+v %v", d, err)
+	}
+	if _, err := r.ResendChangeNotice(ctx, ania.ID); !errors.Is(err, ErrWrongState) {
+		t.Fatalf("after draw: %v", err)
+	}
+	mustState(t, r, Drawn)
+}
+
+func TestResendChangeNoticeNeedsPendingNotice(t *testing.T) {
+	r, st, _, _ := newTestRound(t, defaultYAML)
+	mustSync(t, r)
+	setState(t, st, Collecting)
+	if _, err := r.ResendChangeNotice(context.Background(), personByName(t, st, "Ania").ID); !errors.Is(err, ErrWrongState) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResendChangeNoticeSurvivesClientDisconnect(t *testing.T) {
+	r, st, fake, _ := deliveredRound(t, fourYAML())
+	reconfigure(t, r, testYAML("", pMaciej, pAnia, pOla))
+	mustSync(t, r)
+	if _, err := r.ConfirmChange(context.Background(), "Zmiana!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	before := countKind(t, st, "emergency")
+	if out, err := r.ResendChangeNotice(ctx, personByName(t, st, "Ola").ID); err != nil || out.Sent != 1 {
+		t.Fatalf("%+v %v", out, err)
+	}
+	if countKind(t, st, "emergency") != before+1 {
+		t.Error("not recorded")
+	}
+}

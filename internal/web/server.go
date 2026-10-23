@@ -51,6 +51,7 @@ func NewServer(r *round.Round, cfg *config.Config) http.Handler {
 	mux.HandleFunc("POST /admin/{token}/greetings", s.admin(s.adminGreetings))
 	mux.HandleFunc("POST /admin/{token}/reminders", s.admin(s.adminReminders))
 	mux.HandleFunc("POST /admin/{token}/people/{id}/greeting", s.admin(s.adminResendGreeting))
+	mux.HandleFunc("POST /admin/{token}/people/{id}/change-notice", s.admin(s.adminResendChangeNotice))
 	mux.HandleFunc("POST /admin/{token}/test-sms", s.admin(s.adminTestSMS))
 	mux.HandleFunc("POST /admin/{token}/draw", s.admin(s.adminDraw))
 	mux.HandleFunc("POST /admin/{token}/results", s.admin(s.adminResults))

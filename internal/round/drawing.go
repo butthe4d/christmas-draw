@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -138,6 +139,9 @@ func (r *Round) Draw(ctx context.Context) (DrawOutcome, error) {
 		if err := tx.SavePairs(ctx, pairs); err != nil {
 			return err
 		}
+		if err := tx.SetMeta(ctx, metaNoticePending, ""); err != nil {
+			return err
+		}
 		return tx.SetMeta(ctx, metaState, string(Drawn))
 	})
 	return DrawOutcome{}, err
@@ -261,6 +265,8 @@ func (r *Round) Unseal(ctx context.Context) ([]Pair, error) {
 type changePlan struct {
 	diff      Diff
 	people    []store.Person // stored people, before the change
+	text      string         // the emergency template in use
+	stayingID []int64        // people who stay: the emergency recipients
 	emergency []outgoing     // to everyone who stays
 	greetings []outgoing     // to newcomers, with a masked link (validation, preview, dry-run)
 	problems  []locale.Msg
@@ -280,6 +286,7 @@ func (r *Round) planChange(ctx context.Context, text string) (changePlan, error)
 		return pl, err
 	}
 	pl.people = people
+	pl.text = text
 	pl.diff = r.diff(people, oldHash, haveHash, r.rulesHash())
 
 	removed := map[string]bool{}
@@ -290,6 +297,7 @@ func (r *Round) planChange(ctx context.Context, text string) (changePlan, error)
 	for _, p := range people {
 		if !removed[p.Name] {
 			staying = append(staying, p)
+			pl.stayingID = append(pl.stayingID, p.ID)
 		}
 	}
 	added := map[string]bool{}
@@ -372,6 +380,17 @@ func (r *Round) ConfirmChange(ctx context.Context, text string) (Outcome, error)
 		if err := tx.ClearPairs(ctx); err != nil {
 			return err
 		}
+		ids := make([]string, len(pl.stayingID))
+		for i, id := range pl.stayingID {
+			ids[i] = strconv.FormatInt(id, 10)
+		}
+		for k, v := range map[string]string{
+			metaNoticePending: "1", metaNoticeText: pl.text, metaNoticeIDs: strings.Join(ids, ","),
+		} {
+			if err := tx.SetMeta(ctx, k, v); err != nil {
+				return err
+			}
+		}
 		return tx.SetMeta(ctx, metaState, string(Collecting))
 	})
 	if err != nil {
@@ -416,4 +435,66 @@ func mergeOutcomes(a, b Outcome) Outcome {
 		LogPath: path,
 		sent:    append(append([]int64(nil), a.sent...), b.sent...),
 	}
+}
+
+// changeNotice reads the open emergency-notice window: the template and the
+// IDs of the people who were sent it. ok is false when no window is open.
+func (r *Round) changeNotice(ctx context.Context) (text string, ids map[int64]bool, ok bool, err error) {
+	v, _, err := r.st.Meta(ctx, metaNoticePending)
+	if err != nil || v != "1" {
+		return "", nil, false, err
+	}
+	if text, _, err = r.st.Meta(ctx, metaNoticeText); err != nil {
+		return "", nil, false, err
+	}
+	raw, _, err := r.st.Meta(ctx, metaNoticeIDs)
+	if err != nil {
+		return "", nil, false, err
+	}
+	ids = map[int64]bool{}
+	for _, f := range strings.Split(raw, ",") {
+		if id, perr := strconv.ParseInt(f, 10, 64); perr == nil {
+			ids[id] = true
+		}
+	}
+	return text, ids, true, nil
+}
+
+// ResendChangeNotice sends the confirmed "setup changed" text again to one
+// person who stayed, e.g. after the gateway rejected it. It is allowed in
+// Collecting until the next successful Draw. Newcomers (who got a greeting
+// instead) are not found.
+func (r *Round) ResendChangeNotice(ctx context.Context, personID int64) (Outcome, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, err := r.requireState(ctx, Collecting); err != nil {
+		return Outcome{}, err
+	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
+	text, ids, ok, err := r.changeNotice(ctx)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if !ok {
+		return Outcome{}, ErrWrongState
+	}
+	people, err := r.st.People(ctx)
+	if err != nil {
+		return Outcome{}, err
+	}
+	var one []store.Person
+	for _, p := range people {
+		if p.ID == personID && ids[p.ID] {
+			one = append(one, p)
+		}
+	}
+	if len(one) == 0 {
+		return Outcome{}, store.ErrNotFound
+	}
+	batch, problems := r.build(kindEmergency, text, emergencyMaxSegment, one)
+	if err := batchError(problems); err != nil {
+		return Outcome{}, err
+	}
+	return r.send(ctx, kindEmergency, batch)
 }

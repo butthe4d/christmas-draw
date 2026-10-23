@@ -117,7 +117,6 @@
   "admin.unsealed.notice": "Results were viewed on {date} at {time}.",
   "admin.test.heading": "SMS test",
   "admin.test.send": "Send test SMS to me",
-  "admin.test.result": "Test SMS sent to {to}. Provider ID {id}, status {status}.",
   "admin.change.heading": "The setup changed",
   "admin.change.added": "Added",
   "admin.change.removed": "Removed",
@@ -144,5 +143,16 @@
   "cli.admin_link_none": "No admin link yet. Start the server once with \"serve\".",
   "cli.reset_warning": "This deletes everything in {db}: people, wish lists, the draw and the record of sent messages. Type \"reset\" to continue:",
   "cli.reset_aborted": "Nothing was changed.",
-  "cli.reset_done": "All data deleted. The next start begins a fresh year."
+  "cli.reset_done": "All data deleted. The next start begins a fresh year.",
+  "admin.resend.notice": "Resend change notice",
+  "admin.flash.notice_sent": "Change notice sent: {n}.",
+  "admin.flash.test_sent": "Test SMS sent to {to}. Provider ID {id}.",
+  "admin.test.last": "Last test SMS: ID {id}, status {status}, sent {time}.",
+  "admin.flash.greetings_sent_dryrun": "Dry run: greetings written to the dry-run log: {n}.",
+  "admin.flash.reminders_sent_dryrun": "Dry run: reminders written to the dry-run log: {n}.",
+  "admin.flash.greeting_sent_dryrun": "Dry run: greeting written to the dry-run log: {n}.",
+  "admin.flash.result_sent_dryrun": "Dry run: result written to the dry-run log: {n}.",
+  "admin.flash.results_sent_dryrun": "Dry run: results written to the dry-run log: {n}.",
+  "admin.flash.change_sent_dryrun": "Dry run: change notices written to the dry-run log: {n}.",
+  "admin.flash.notice_sent_dryrun": "Dry run: change notice written to the dry-run log: {n}."
 }

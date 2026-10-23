@@ -117,7 +117,6 @@
   "admin.unsealed.notice": "Wyniki obejrzano {date} o {time}.",
   "admin.test.heading": "Test SMS",
   "admin.test.send": "Wyślij testowy SMS do mnie",
-  "admin.test.result": "Testowy SMS wysłano na {to}. Identyfikator {id}, status {status}.",
   "admin.change.heading": "Skład się zmienił",
   "admin.change.added": "Dodani",
   "admin.change.removed": "Usunięci",
@@ -144,5 +143,16 @@
   "cli.admin_link_none": "Brak jeszcze linku organizatora. Uruchom serwer raz poleceniem \"serve\".",
   "cli.reset_warning": "To usunie wszystko z {db}: osoby, listy życzeń, losowanie i zapis wysłanych wiadomości. Wpisz \"reset\", aby kontynuować:",
   "cli.reset_aborted": "Nic nie zmieniono.",
-  "cli.reset_done": "Wszystkie dane usunięte. Następne uruchomienie zaczyna nowy rok."
+  "cli.reset_done": "Wszystkie dane usunięte. Następne uruchomienie zaczyna nowy rok.",
+  "admin.resend.notice": "Wyślij informację o zmianie ponownie",
+  "admin.flash.notice_sent": "Wysłana informacja o zmianie: {n}.",
+  "admin.flash.test_sent": "Testowy SMS wysłano na {to}. Identyfikator {id}.",
+  "admin.test.last": "Ostatni testowy SMS: identyfikator {id}, status {status}, wysłany {time}.",
+  "admin.flash.greetings_sent_dryrun": "Tryb próbny: powitania zapisane w dzienniku próbnym: {n}.",
+  "admin.flash.reminders_sent_dryrun": "Tryb próbny: przypomnienia zapisane w dzienniku próbnym: {n}.",
+  "admin.flash.greeting_sent_dryrun": "Tryb próbny: powitanie zapisane w dzienniku próbnym: {n}.",
+  "admin.flash.result_sent_dryrun": "Tryb próbny: wynik zapisany w dzienniku próbnym: {n}.",
+  "admin.flash.results_sent_dryrun": "Tryb próbny: wyniki zapisane w dzienniku próbnym: {n}.",
+  "admin.flash.change_sent_dryrun": "Tryb próbny: informacje o zmianie zapisane w dzienniku próbnym: {n}.",
+  "admin.flash.notice_sent_dryrun": "Tryb próbny: informacja o zmianie zapisana w dzienniku próbnym: {n}."
 }

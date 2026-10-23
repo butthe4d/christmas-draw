@@ -39,6 +39,13 @@ const (
 	metaAdminToken = "admin_token"
 	metaRulesHash  = "rules_hash"
 	metaUnsealedAt = "unsealed_at" // RFC 3339; written by later tasks
+
+	// Set by ConfirmChange, cleared by the next successful Draw: the emergency
+	// text and the IDs of the people who were sent it, so a failed one can be
+	// resent. metaNoticePending is "1" while the window is open.
+	metaNoticePending = "change_notice_pending"
+	metaNoticeText    = "change_notice_text"
+	metaNoticeIDs     = "change_notice_ids" // comma-separated person IDs
 )
 
 // Options holds injectable dependencies; zero values mean time.Now and crypto/rand.

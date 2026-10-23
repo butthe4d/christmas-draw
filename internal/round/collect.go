@@ -61,9 +61,18 @@ type PersonStatus struct {
 	Items                int
 	Greeted              bool
 	LastKind, LastStatus string
+	CanResendNotice      bool // the "setup changed" SMS can be resent to them
+}
+
+// TestStatus is the newest SMS test and its last known delivery status.
+type TestStatus struct {
+	ProviderID int64
+	Status     string
+	SentAt     time.Time
 }
 
 type Overview struct {
+	LastTest   *TestStatus // nil if no SMS test was sent
 	State      State
 	People     []PersonStatus
 	Ungreeted  int
@@ -526,14 +535,29 @@ func (r *Round) Overview(ctx context.Context) (Overview, error) {
 		return Overview{}, err
 	}
 	last := map[int64]store.Message{}
+	var lastTest *TestStatus
 	for _, m := range msgs {
+		if m.Kind == kindTest {
+			if lastTest == nil {
+				lastTest = &TestStatus{ProviderID: m.ProviderID, Status: m.Status, SentAt: m.SentAt}
+			}
+			continue
+		}
 		if _, ok := last[m.PersonID]; !ok {
 			last[m.PersonID] = m
 		}
 	}
-	ov := Overview{State: state, DryRun: r.cfg.DryRun, Infeasible: infeasibleMsg(draw.Feasible(r.rules()))}
+	var notice map[int64]bool
+	if state == Collecting {
+		if _, ids, ok, err := r.changeNotice(ctx); err != nil {
+			return Overview{}, err
+		} else if ok {
+			notice = ids
+		}
+	}
+	ov := Overview{LastTest: lastTest, State: state, DryRun: r.cfg.DryRun, Infeasible: infeasibleMsg(draw.Feasible(r.rules()))}
 	for _, p := range people {
-		ps := PersonStatus{ID: p.ID, Name: p.Name, Items: counts[p.ID], Greeted: p.Greeted}
+		ps := PersonStatus{ID: p.ID, Name: p.Name, Items: counts[p.ID], Greeted: p.Greeted, CanResendNotice: notice[p.ID]}
 		if m, ok := last[p.ID]; ok {
 			ps.LastKind, ps.LastStatus = m.Kind, m.Status
 		}
