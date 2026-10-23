@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/butthe4d/christmas-draw/internal/message"
+	"github.com/butthe4d/christmas-draw/internal/sender"
 	"github.com/butthe4d/christmas-draw/internal/store"
 )
 
@@ -126,6 +127,15 @@ func TestPartialFailure(t *testing.T) {
 	}
 	if personByName(t, st, "Tomek").Greeted {
 		t.Error("Tomek greeted")
+	}
+	if n := countKind(t, st, "greeting"); n != 2 {
+		t.Errorf("recorded %d greetings", n)
+	}
+	ms, _ := st.Messages(ctx)
+	for _, m := range ms {
+		if m.PersonID == personByName(t, st, "Tomek").ID {
+			t.Error("message recorded for Tomek")
+		}
 	}
 	fake.FailTo = nil
 	fake.Sent = nil
@@ -283,7 +293,7 @@ func TestResendGreeting(t *testing.T) {
 
 func TestOverview(t *testing.T) {
 	ctx := context.Background()
-	r, st, _, _ := newTestRound(t, defaultYAML)
+	r, _, _, _ := newTestRound(t, defaultYAML)
 	mustSync(t, r)
 	if _, err := r.SendGreetings(ctx); err != nil {
 		t.Fatal(err)
@@ -300,7 +310,6 @@ func TestOverview(t *testing.T) {
 			t.Errorf("%+v", p)
 		}
 	}
-	_ = st
 }
 
 func TestInfeasibleMsg(t *testing.T) {
@@ -313,5 +322,48 @@ func TestInfeasibleMsg(t *testing.T) {
 	}
 	if ov.Infeasible == nil || ov.Infeasible.Key != "draw.nobody_allowed" || ov.Infeasible.Args["name"] != "Maciej" {
 		t.Fatalf("%+v", ov.Infeasible)
+	}
+}
+
+// deletingSender removes a person from the store while their SMS is being
+// sent, so the following RecordMessage fails (foreign key).
+type deletingSender struct {
+	*sender.Fake
+	st    *store.Store
+	phone string
+	id    int64
+}
+
+func (d *deletingSender) Send(ctx context.Context, m sender.SMS) (sender.Result, error) {
+	res, err := d.Fake.Send(ctx, m)
+	if err == nil && m.To == d.phone {
+		_ = d.st.DeletePerson(ctx, d.id)
+	}
+	return res, err
+}
+
+func TestRecordFailureStillMarksSent(t *testing.T) {
+	ctx := context.Background()
+	r, st, fake, _ := newTestRound(t, defaultYAML)
+	mustSync(t, r)
+	r.snd = &deletingSender{Fake: fake, st: st, phone: pTomek.Phone, id: personByName(t, st, "Tomek").ID}
+	out, err := r.SendGreetings(ctx)
+	if err == nil {
+		t.Fatal("expected record error")
+	}
+	if out.Sent != 3 || len(fake.Sent) != 3 {
+		t.Fatalf("out=%+v sent=%d", out, len(fake.Sent))
+	}
+	if s, _ := r.State(ctx); s != Collecting {
+		t.Errorf("state %s", s)
+	}
+	for _, n := range []string{"Maciej", "Ania"} {
+		if !personByName(t, st, n).Greeted {
+			t.Errorf("%s not greeted", n)
+		}
+	}
+	fake.Sent = nil
+	if _, err := r.SendGreetings(ctx); err != nil || len(fake.Sent) != 0 {
+		t.Fatalf("resent: err=%v sent=%+v", err, fake.Sent)
 	}
 }

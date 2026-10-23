@@ -45,6 +45,8 @@ type Outcome struct {
 	Sent    int      // SMS accepted by the gateway; in dry-run, SMS written to the log
 	Failed  []string // person names
 	LogPath string   // set when DryRun
+
+	sent []int64 // person IDs whose SMS the gateway accepted (not dry-run)
 }
 
 type TestResult struct {
@@ -250,14 +252,15 @@ func (r *Round) send(ctx context.Context, kind string, batch []outgoing) (Outcom
 			out.Failed = append(out.Failed, names[o.personID])
 			continue
 		}
-		_, err = r.st.RecordMessage(ctx, store.Message{
+		out.Sent++
+		out.sent = append(out.sent, o.personID)
+		if _, err := r.st.RecordMessage(ctx, store.Message{
 			PersonID: o.personID, Kind: kind, ProviderID: res.ProviderID, Status: res.Status,
 			Segments: smstext.Segments(o.sms.Text), SentAt: r.opts.Now(),
-		})
-		if err != nil {
+		}); err != nil {
+			// The SMS went out; callers still act on out.sent.
 			return out, err
 		}
-		out.Sent++
 	}
 	if out.Sent == 0 {
 		return out, locale.M("send.all_failed", "count", strconv.Itoa(len(batch)), "error", firstErr.Error())
@@ -303,33 +306,22 @@ func (r *Round) SendGreetings(ctx context.Context) (Outcome, error) {
 		return Outcome{}, err
 	}
 	out, err := r.send(ctx, kindGreeting, batch)
-	if err != nil || out.DryRun || out.Sent == 0 {
+	if out.DryRun || out.Sent == 0 {
 		return out, err
 	}
-	return out, r.markGreeted(ctx, batch, out.Failed, state)
+	// Even if recording failed, those who got the SMS must not be texted again.
+	if merr := r.markGreeted(ctx, out.sent, state); err == nil {
+		err = merr
+	}
+	return out, err
 }
 
-// markGreeted flags everyone in batch who did not fail, and moves Setup on
-// to Collecting.
-func (r *Round) markGreeted(ctx context.Context, batch []outgoing, failed []string, state State) error {
-	people, err := r.st.People(ctx)
-	if err != nil {
-		return err
-	}
-	bad := map[string]bool{}
-	for _, n := range failed {
-		bad[n] = true
-	}
-	name := map[int64]string{}
-	for _, p := range people {
-		name[p.ID] = p.Name
-	}
+// markGreeted flags the people whose SMS went out, and moves Setup on to
+// Collecting. People deleted in the meantime are skipped.
+func (r *Round) markGreeted(ctx context.Context, ids []int64, state State) error {
 	return r.st.Tx(ctx, func(tx *store.Store) error {
-		for _, o := range batch {
-			if bad[name[o.personID]] {
-				continue
-			}
-			if err := tx.SetGreeted(ctx, o.personID, true); err != nil {
+		for _, id := range ids {
+			if err := tx.SetGreeted(ctx, id, true); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
 		}
@@ -375,7 +367,8 @@ func (r *Round) SendReminders(ctx context.Context) (Outcome, error) {
 func (r *Round) ResendGreeting(ctx context.Context, personID int64) (Outcome, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, err := r.requireState(ctx, Collecting, Drawn, Delivered, ChangePending); err != nil {
+	state, err := r.requireState(ctx, Collecting, Drawn, Delivered, ChangePending)
+	if err != nil {
 		return Outcome{}, err
 	}
 	people, err := r.st.People(ctx)
@@ -396,10 +389,13 @@ func (r *Round) ResendGreeting(ctx context.Context, personID int64) (Outcome, er
 		return Outcome{}, err
 	}
 	out, err := r.send(ctx, kindGreeting, batch)
-	if err != nil || out.DryRun || out.Sent == 0 {
+	if out.DryRun || out.Sent == 0 {
 		return out, err
 	}
-	return out, r.st.SetGreeted(ctx, personID, true)
+	if merr := r.markGreeted(ctx, out.sent, state); err == nil {
+		err = merr
+	}
+	return out, err
 }
 
 // randCode returns a uniform number in [0, 10000) read from rnd.
@@ -490,35 +486,6 @@ func (r *Round) RefreshStatuses(ctx context.Context) error {
 	return nil
 }
 
-// pendingDiff compares the config with the stored people and rules.
-func (r *Round) pendingDiff(ctx context.Context, people []store.Person) (Diff, error) {
-	var d Diff
-	byName := map[string]store.Person{}
-	for _, p := range people {
-		byName[p.Name] = p
-	}
-	inCfg := map[string]bool{}
-	for _, cp := range r.cfg.People {
-		inCfg[cp.Name] = true
-		if p, ok := byName[cp.Name]; !ok {
-			d.Added = append(d.Added, cp.Name)
-		} else if p.Phone != cp.Phone {
-			d.PhoneChanged = append(d.PhoneChanged, cp.Name)
-		}
-	}
-	for _, p := range people {
-		if !inCfg[p.Name] {
-			d.Removed = append(d.Removed, p.Name)
-		}
-	}
-	old, ok, err := r.st.Meta(ctx, metaRulesHash)
-	if err != nil {
-		return d, err
-	}
-	d.RulesChanged = ok && old != r.rulesHash()
-	return d, nil
-}
-
 // Overview gathers what the admin page shows.
 func (r *Round) Overview(ctx context.Context) (Overview, error) {
 	r.mu.Lock()
@@ -564,10 +531,11 @@ func (r *Round) Overview(ctx context.Context) (Overview, error) {
 		}
 	}
 	if state == ChangePending {
-		d, err := r.pendingDiff(ctx, people)
+		old, ok, err := r.st.Meta(ctx, metaRulesHash)
 		if err != nil {
 			return ov, err
 		}
+		d := r.diff(people, old, ok, r.rulesHash())
 		ov.Pending = &d
 	}
 	return ov, nil

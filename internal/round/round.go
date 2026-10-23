@@ -240,23 +240,7 @@ func (r *Round) sync(ctx context.Context, tx *store.Store) (SyncReport, error) {
 	for _, p := range people {
 		byName[p.Name] = p
 	}
-	inCfg := map[string]bool{}
-	for _, cp := range r.cfg.People {
-		inCfg[cp.Name] = true
-		p, ok := byName[cp.Name]
-		switch {
-		case !ok:
-			rep.Diff.Added = append(rep.Diff.Added, cp.Name)
-		case p.Phone != cp.Phone:
-			rep.Diff.PhoneChanged = append(rep.Diff.PhoneChanged, cp.Name)
-		}
-	}
-	for _, p := range people {
-		if !inCfg[p.Name] {
-			rep.Diff.Removed = append(rep.Diff.Removed, p.Name)
-		}
-	}
-	rep.Diff.RulesChanged = haveHash && oldHash != newHash
+	rep.Diff = r.diff(people, oldHash, haveHash, newHash)
 
 	applyPhones := func() error {
 		for _, cp := range r.cfg.People {
@@ -333,4 +317,32 @@ func (r *Round) sync(ctx context.Context, tx *store.Store) (SyncReport, error) {
 	}
 	rep.NewState = state
 	return rep, nil
+}
+
+// diff compares the config with the stored people and rules hash. Used by
+// sync and by the admin overview so both see the same changes.
+func (r *Round) diff(people []store.Person, oldHash string, haveHash bool, newHash string) Diff {
+	var d Diff
+	byName := map[string]store.Person{}
+	for _, p := range people {
+		byName[p.Name] = p
+	}
+	inCfg := map[string]bool{}
+	for _, cp := range r.cfg.People {
+		inCfg[cp.Name] = true
+		p, ok := byName[cp.Name]
+		switch {
+		case !ok:
+			d.Added = append(d.Added, cp.Name)
+		case p.Phone != cp.Phone:
+			d.PhoneChanged = append(d.PhoneChanged, cp.Name)
+		}
+	}
+	for _, p := range people {
+		if !inCfg[p.Name] {
+			d.Removed = append(d.Removed, p.Name)
+		}
+	}
+	d.RulesChanged = haveHash && oldHash != newHash
+	return d
 }
