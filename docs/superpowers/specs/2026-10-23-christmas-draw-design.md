@@ -64,13 +64,15 @@ families.
   `github.com/gsmservice-pl/messaging-sdk-go/v4`. It has `Outgoing.Sms.Send`,
   `Outgoing.Sms.GetPrice`, and `Outgoing.GetByIds` (for delivery status), plus
   a `sandbox` server option (`https://api.szybkisms.pl/rest-sandbox`).
-- **SMS encoding:** Polish diacritics are transliterated to plain ASCII
-  (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z, plus capitals). This keeps every
-  SMS in the GSM-7 alphabet: 160 characters for a single SMS, 153 per segment
-  when joined. The draw SMS may span 1–3 segments.
-- **Location:** Poland. Phone numbers are Polish mobile numbers (`+48` and 9
-  digits). Accepting other countries is left to the builder, but Polish is the
-  case that must work.
+- **SMS encoding:** every SMS stays in the GSM-7 alphabet: 160 characters for
+  a single SMS, 153 per segment when joined. Letters GSM-7 already has (e.g.
+  German ü, French é) are kept. Other accented letters lose their accent
+  (ą→a, ł→l, ż→z, č→c, ő→o, …): Polish letters by an explicit table (ł has no
+  Unicode decomposition), everything else by Unicode decomposition with the
+  marks removed. The draw SMS may span 1–3 segments.
+- **Location:** the author lives in Poland, but the published app works for any
+  country. Phone numbers are international (E.164). Numbers written without a
+  country prefix get `default_country_code` (e.g. `+48`) added.
 - **Hosting:** the author's homelab behind an Orange Światłowód / Funbox router,
   possibly behind CGNAT. No inbound ports. Public access only through an
   outbound tunnel: Tailscale Funnel (free `*.ts.net` address, no domain needed)
@@ -89,7 +91,8 @@ The author chose A.
 
 ## Decisions made with the author
 
-1. **SMS is mandatory**, with Polish letters transliterated to ASCII.
+1. **SMS is mandatory**, with accented letters transliterated so SMS stay
+   GSM-7 (originally: Polish letters to ASCII; widened with decision 11).
 2. **Draw SMS = name of the drawn person + short wish summary + link** to their
    full wish list, in 1–3 SMS. The full list lives on a web page, which can be
    nicer than a plain list ("letter to Santa").
@@ -106,6 +109,8 @@ The author chose A.
    (frozen at the moment of the draw).
 9. **Fresh start every year.** No history.
 10. **Go**, single binary, approach A.
+11. **Multiple languages, English by default.** See Localization.
+12. **International phone numbers** with a `default_country_code` setting.
 
 ## Proposals the author has heard and not rejected
 
@@ -126,8 +131,6 @@ design unless the author changes them.
   never draw each other (e.g. a parent and an adult child living together). A
   couple is just the most common exclusion. The couple toggle controls only the
   `couples` list. `exclusions` always apply.
-- **Web UI in Polish and English.** SMS texts and greeting come from config, so
-  they are in whatever language the organiser writes.
 
 ## How it works
 
@@ -197,6 +200,21 @@ The full CLI `reset` is still there for wiping everything and starting over.
 Other config changes that don't fit the table are refused, with an
 explanation.
 
+### Localization (decided with the author)
+
+- All text the app itself produces (web pages, admin page, error and check
+  messages, CLI output, default SMS templates) comes from one locale file per
+  language, built into the binary. Adding a language means adding one file;
+  no code changes.
+- English (`en`) and Polish (`pl`) ship first. English is the default.
+- `language` in config sets the default for web pages and picks the default
+  SMS templates (greeting example, result, reminder, emergency, test).
+  Templates set in config always win.
+- Each visitor can switch the web page language; SMS are always in the
+  configured language.
+- A missing key in a locale falls back to English. A test checks that every
+  locale has every key English has.
+
 ### Configuration
 
 One YAML file. Its shape, as discussed with the author:
@@ -211,7 +229,8 @@ lists_editable_after_draw: false
 dry_run: true
 organiser_phone: "+48..."                     # receives the SMS test
 max_result_segments: 3
-language: pl                                  # web UI default; en also available
+language: en                                  # default en; picks web UI default and default SMS texts
+default_country_code: "+48"                   # added to numbers written without a prefix
 people:
   - { name: Maciej, phone: "+48..." }
   - { name: Ania,   phone: "+48..." }
@@ -269,7 +288,7 @@ after transliteration is a validation error, not a silent replacement.
 Run automatically at the relevant step. Any failure blocks the step and is
 shown on the admin page.
 
-1. **Config:** valid Polish phone numbers, no duplicate names or phones,
+1. **Config:** valid phone numbers (E.164 after adding `default_country_code`), no duplicate names or phones,
    couples and exclusions refer to configured people, nobody in two couples,
    at least 3 people (2 people can only draw each other, which is pointless but
    valid; the builder decides whether to allow it).
@@ -313,7 +332,7 @@ Links should be short. The token in the URL is about 16 characters (around
   - Before the draw: edit your own wish list.
   - After the draw: your list (read-only unless `lists_editable_after_draw`),
     plus who you drew and their full list, styled as a "letter to Santa".
-  - Polish/English switch.
+  - Language switch between the available languages.
 - **Admin page** (`/admin/<token>`): state, checks, previews, and the actions
   above.
 - Server-rendered Go `html/template`, hand-written CSS, works on a phone. Little
@@ -379,9 +398,10 @@ These were settled by Claude, not the author. The author can override them.
 
 - Exact database schema, package layout, routing library (standard library is
   fine).
-- Default SMS templates (Polish, ASCII-only) and segment limits for greeting and
-  reminder.
-- Whether to accept non-Polish phone numbers.
+- Wording of the default SMS templates (per language, GSM-7 only) and segment
+  limits for greeting and reminder.
+- Format of the locale files (JSON, TOML, …) and how the language is chosen per
+  visitor (query parameter, cookie, `Accept-Language`).
 - What exactly goes in the dry-run log (see Secrecy).
 - Rate limiting or other hardening of token endpoints. Tokens are long and
   random, so the minimum is "don't leak them in logs".

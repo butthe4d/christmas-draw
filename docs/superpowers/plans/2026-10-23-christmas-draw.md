@@ -6,7 +6,7 @@
 
 **Architecture:** One Go binary with subcommands. The `round` package owns the lifecycle state machine and every rule. It sits on a SQLite store, a pure draw engine, a pure SMS-text/message layer, and a `Sender` interface (real gsmservice client, or a test fake). The `web` package is a thin server-rendered `html/template` layer over `round`. Dry-run is decided inside `round`: it writes to a log file and changes nothing.
 
-**Tech Stack:** Go ≥ 1.26.8 (required by the SDK's `go.mod`), standard library `net/http` (1.22+ pattern routing), `html/template` + `embed`, `modernc.org/sqlite` (pure Go, so `CGO_ENABLED=0` single binary), `gopkg.in/yaml.v3`, `github.com/gsmservice-pl/messaging-sdk-go/v4`.
+**Tech Stack:** Go ≥ 1.26.8 (required by the SDK's `go.mod`), standard library `net/http` (1.22+ pattern routing), `html/template` + `embed`, `modernc.org/sqlite` (pure Go, so `CGO_ENABLED=0` single binary), `gopkg.in/yaml.v3`, `golang.org/x/text/unicode/norm`, `github.com/gsmservice-pl/messaging-sdk-go/v4`.
 
 **Spec:** `docs/superpowers/specs/2026-10-23-christmas-draw-design.md`. Read it before any task.
 
@@ -17,23 +17,29 @@
 - All randomness (draw, tokens, SMS test code) comes from `crypto/rand`, injected as `io.Reader` where tests need control.
 - Tokens: 10 random bytes → base32 (RFC 4648, uppercase, no padding) = 16 characters. Person links: `<base_url>/p/<token>`. Admin link: `<base_url>/admin/<token>`.
 - Masked token in dry-run logs and admin previews: `XXXXXXXXXXXXXXXX` (16 × `X`).
-- SMS text is always transliterated (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z and capitals) before checks and sending. GSM-7: 160 units single, 153 per segment when joined. Extension characters (`^{}\[~]|€`) count 2 units.
+- SMS text is always transliterated before checks and sending. Runes already in GSM-7 are kept (ü, é, ñ, …). Polish letters use an explicit table (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z and capitals; ł/Ł have no Unicode decomposition). Any other non-GSM letter is NFD-decomposed with combining marks removed (č→c, ő→o); if the result is GSM-7, use it. GSM-7: 160 units single, 153 per segment when joined. Extension characters (`^{}\[~]|€`) count 2 units.
 - Segment limits: greeting 2, reminder 2, emergency 2, result `max_result_segments` (default 3), SMS test 1.
 - Never write a person token, the admin token (except the one start-up line and `admin-link`), result SMS text, or pairs to normal logs. Don't log request paths.
 - The admin page never shows a person's token or result SMS content. Pairs are shown only through Unseal.
 - Person identity across config edits = trimmed name (case-sensitive). Phones are compared after normalisation.
 - Dry-run never changes state, never records messages, never saves a draw. Its only side effect is appending to the dry-run log. The SMS test is the only send that ignores `dry_run`.
-- Default SMS templates (ASCII, gender-neutral, Claude's call):
-  - result: `{name}, w tym roku obdarowujesz: {receiver}. Zyczenia: {summary} Cala lista: {link}`
-  - reminder: `{name}, czekamy na Twoja liste zyczen do losowania prezentow: {link}`
-  - emergency: `Zmiana w losowaniu! Poprzednie losowanie jest niewazne, wkrotce dostaniesz nowe.`
-  - test: `christmas-draw test HH:MM kod NNNN` (local time, 4 random digits)
-- Claude's calls on spec items left to the builder: Polish numbers only (`+48` + 9 digits). At least 3 people. `dry_run` defaults to `true` when absent, and `exclude_couples` defaults to `true` when absent. The dry-run log shows full text with masked tokens. Unseal records the *first* view time.
+- **Localization:** every user-visible string the app produces (web, admin, check/problem messages, CLI output, default SMS templates) comes from `internal/locale/locales/<lang>.json`. No user-visible literals in Go code or templates. Functions that report problems return `locale.Msg` (key + args), never a formatted string. Default language `en`. Missing keys fall back to `en`.
+- Default SMS templates (GSM-7, gender-neutral, Claude's call). Locale keys `sms.result`, `sms.reminder`, `sms.emergency`, `sms.test`:
+  - en result: `{name}, this year you give a present to: {receiver}. Wishes: {summary} Full list: {link}`
+  - en reminder: `{name}, we are still waiting for your wish list for the gift draw: {link}`
+  - en emergency: `Change in the gift draw! The previous draw is cancelled, you will get a new one soon.`
+  - en test: `christmas-draw test {time} code {code}` (local HH:MM, 4 random digits)
+  - pl result: `{name}, w tym roku obdarowujesz: {receiver}. Zyczenia: {summary} Cala lista: {link}`
+  - pl reminder: `{name}, czekamy na Twoja liste zyczen do losowania prezentow: {link}`
+  - pl emergency: `Zmiana w losowaniu! Poprzednie losowanie jest niewazne, wkrotce dostaniesz nowe.`
+  - pl test: `christmas-draw test {time} kod {code}`
+- Phone numbers: E.164 (`+` and 8–15 digits). `default_country_code` (e.g. `+48`) is prepended to numbers without a prefix.
+- Claude's calls on spec items left to the builder: locale files are flat JSON (`"key": "text"`, placeholders `{name}`). Visitor language: `?lang=` → cookie `lang` → `cfg.Language`. At least 3 people. `dry_run` defaults to `true` when absent, and `exclude_couples` defaults to `true` when absent. The dry-run log shows full text with masked tokens. Unseal records the *first* view time.
 - Commit after every task. Messages use the form `feat: …` / `test: …` and end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
-1. **Wish-list titles with emoji or other non-GSM characters** (`🎁`, `ü`, `“”`, `…`). The draw must not be blocked by what a relative typed. Typographic quotes, dashes, and `…` are transliterated (`"`, `-`, `...`). Any other non-GSM rune is dropped from the *SMS summary only*; the web page shows the original. Templates from config still fail validation on non-GSM. Test in Task 4.
+1. **Wish-list titles with emoji or other non-GSM characters** (`🎁`, `漢`, `“”`, `…`). The draw must not be blocked by what a relative typed. Typographic quotes, dashes, and `…` are transliterated (`"`, `-`, `...`). Any other non-GSM rune is dropped from the *SMS summary only*; the web page shows the original. Templates from config still fail validation on non-GSM. Test in Task 4.
 2. **A `javascript:` or `data:` URL in an item's shop link.** It's rejected with a form error; only `http://` and `https://` are accepted. Test in Task 10.
 3. **Double-click or two tabs pressing "send results" / "send greetings".** Exactly one batch goes out, and the second call gets a "wrong state" error. All `Round` actions hold one mutex, and state is re-read inside it. Test in Task 9.
 4. **Editing the config with cosmetic differences** (`"Ania "` vs `"Ania"`, `600 100 200` vs `+48600100200`). The person and their list stay the same; this is not a remove + add. Test in Task 7.
@@ -58,7 +64,9 @@ internal/round/collect.go          greetings, reminders, resend, SMS test, previ
 internal/round/drawing.go          draw, results, unseal, change-pending flow
 internal/round/person.go           person views and wish-list edits
 internal/web/server.go             routes, handlers
-internal/web/i18n.go               pl/en strings
+internal/locale/locale.go          locale lookup, Msg type, available languages
+internal/locale/locales/en.json    English strings (default)
+internal/locale/locales/pl.json    Polish strings
 internal/web/templates/*.html      person.html, admin.html, unseal.html, layout.html, notfound.html
 internal/web/static/style.css
 Dockerfile, README.md, config.example.yaml, CLAUDE.md
@@ -66,10 +74,10 @@ Dockerfile, README.md, config.example.yaml, CLAUDE.md
 
 ---
 
-### Task 1: Project skeleton and SMS text rules
+### Task 1: Project skeleton, locales and SMS text rules
 
 **Files:**
-- Create: `go.mod`, `internal/smstext/smstext.go`, `internal/smstext/smstext_test.go`, `.gitignore` (`/christmas-draw`, `*.db`, `dry-run.log`, `config.yaml`)
+- Create: `go.mod`, `internal/smstext/smstext.go`, `internal/smstext/smstext_test.go`, `internal/locale/locale.go`, `internal/locale/locale_test.go`, `internal/locale/locales/en.json`, `internal/locale/locales/pl.json`, `.gitignore` (`/christmas-draw`, `*.db`, `dry-run.log`, `config.yaml`)
 
 **Interfaces:**
 - Produces:
@@ -78,6 +86,19 @@ Dockerfile, README.md, config.example.yaml, CLAUDE.md
   - `func Length(s string) int`: GSM-7 units (extension chars count 2)
   - `func Segments(s string) int`: `0` for empty, `1` if `Length ≤ 160`, else `ceil(Length/153)`
   - `func StripNonGSM(s string) string`
+  - package `locale`:
+
+```go
+type Msg struct{ Key string; Args map[string]string }
+func M(key string, kv ...string) Msg            // M("draw.empty_list", "name", "Tomek")
+func Available() []string                       // sorted codes of embedded files, e.g. ["en","pl"]
+func Has(lang string) bool
+func T(lang, key string, args map[string]string) string // lang → en → key itself; fills {arg}
+func (m Msg) In(lang string) string
+func (m Msg) Error() string                     // m.In("en"), so Msg can be returned as an error
+```
+
+  Every later task that adds user-visible text adds its key to **both** `en.json` and `pl.json`. Task 1 seeds the `sms.*` keys from Global Constraints plus `lang.name` (`"English"` / `"Polski"`).
 
 - [ ] **Step 1: Install Go and init the module.** Install the latest Go 1.26.x (≥ 1.26.8) from go.dev/dl. Run `go mod init github.com/butthe4d/christmas-draw`. Expected: `go version` prints `go1.26.x`.
 
@@ -90,6 +111,7 @@ func TestTransliterate(t *testing.T) {
 		"ŁĄKA Ść Ń":         "LAKA Sc N",
 		"“cytat” – ok…":     `"cytat" - ok...`,
 		"„dolny”":           `"dolny"`,
+		"Čeština ő ü é ñ":   "Cestina o ü é ñ",
 	}
 	for in, want := range cases {
 		if got := Transliterate(in); got != want {
@@ -100,7 +122,7 @@ func TestTransliterate(t *testing.T) {
 
 func TestNonGSM(t *testing.T) {
 	if got := NonGSM("Hej {name} €5 [ok]"); len(got) != 0 { t.Fatalf("got %q", got) }
-	if got := NonGSM("prezent 🎁 ü ü"); !reflect.DeepEqual(got, []rune{'🎁', 'ü'}) { t.Fatalf("got %q", got) }
+	if got := NonGSM("prezent 🎁 漢 漢 ü"); !reflect.DeepEqual(got, []rune{'🎁', '漢'}) { t.Fatalf("got %q", got) }
 }
 
 func TestLengthAndSegments(t *testing.T) {
@@ -117,13 +139,20 @@ func TestStripNonGSM(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run** `go test ./internal/smstext/`. Expected: FAIL (undefined functions).
+- [ ] **Step 3: Write failing tests** in `locale_test.go`:
+  - `TestLocalesComplete`: for every code in `Available()`, the key set equals `en`'s key set. Failure lists missing and extra keys per language.
+  - `TestAvailable`: `Available()` contains `"en"` and `"pl"`. `Has("de")` is false.
+  - `TestFallback`: `T("de","sms.result",nil)` equals `T("en","sms.result",nil)`. `T("en","no.such.key",nil)` == `"no.such.key"`.
+  - `TestArgs`: `M("sms.test","time","21:03","code","4821").In("pl")` == `"christmas-draw test 21:03 kod 4821"`.
+  - `TestSMSDefaultsAreGSM`: for every language, every `sms.*` value has no `smstext.NonGSM` runes.
 
-- [ ] **Step 4: Implement** `smstext.go`. Use the GSM 03.38 basic and extension tables as rune sets. Transliteration also maps `“”„«»` → `"`, `‘’‚` → `'`, `–—` → `-`, `…` → `...`.
+- [ ] **Step 4: Run** `go test ./internal/...`. Expected: FAIL (undefined functions).
 
-- [ ] **Step 5: Run** `go test ./internal/smstext/`. Expected: PASS.
+- [ ] **Step 5: Implement** `smstext.go` and `locale.go` with the two JSON files (`//go:embed locales/*.json`). Use the GSM 03.38 basic and extension tables as rune sets. Transliteration also maps `“”„«»` → `"`, `‘’‚` → `'`, `–—` → `-`, `…` → `...`.
 
-- [ ] **Step 6: Commit** `feat: add SMS text rules (transliteration, GSM-7, segments)`.
+- [ ] **Step 6: Run** `go test ./internal/...`. Expected: PASS.
+
+- [ ] **Step 7: Commit** `feat: add locales and SMS text rules (transliteration, GSM-7, segments)`.
 
 ---
 
@@ -133,7 +162,7 @@ func TestStripNonGSM(t *testing.T) {
 - Create: `internal/config/config.go`, `internal/config/config_test.go`, `config.example.yaml`
 
 **Interfaces:**
-- Consumes: `smstext.Transliterate`, `smstext.NonGSM`
+- Consumes: `smstext.Transliterate`, `smstext.NonGSM`, `locale.*`
 - Produces:
 
 ```go
@@ -153,7 +182,8 @@ type Config struct {
 	DryRun                 bool
 	OrganiserPhone         string
 	MaxResultSegments      int
-	Language               string // "pl" | "en"
+	Language               string // any locale.Has code; default "en"
+	DefaultCountryCode     string // e.g. "+48"; "" = every number must have a prefix
 	People                 []Person
 	Couples                [][2]string
 	Exclusions             [][2]string
@@ -161,30 +191,32 @@ type Config struct {
 }
 func Load(path string) (*Config, error) // parse + defaults + env + Validate
 func Parse(data []byte) (*Config, error) // same, without file IO (tests)
-func NormalizePhone(s string) (string, error)
-type Problems []string                  // implements error, joined with "; "
+func NormalizePhone(s, defaultCountryCode string) (string, error)
+type Problems []locale.Msg              // implements error: English texts joined with "; "
 func (c *Config) Validate() error       // returns Problems or nil
 ```
 
-YAML keys are exactly as in the spec's config example, plus `emergency_template` and `sms.price_per_segment`. Use pointer fields in the YAML struct for `exclude_couples` and `dry_run`, so "absent" defaults to `true`. Env `CHRISTMAS_DRAW_SMS_TOKEN` overrides `sms.token`. Names and phones are trimmed. Phones are normalised in `Parse`.
+YAML keys are exactly as in the spec's config example (including `default_country_code`), plus `emergency_template` and `sms.price_per_segment`. Templates not set in config default to `locale.T(Language, "sms.result"|"sms.reminder"|"sms.emergency", nil)`. `greeting` has no default; it is required. Use pointer fields in the YAML struct for `exclude_couples` and `dry_run`, so "absent" defaults to `true`. Env `CHRISTMAS_DRAW_SMS_TOKEN` overrides `sms.token`. Names and phones are trimmed. Phones are normalised in `Parse`.
 
 - [ ] **Step 1: Write failing tests:**
-  - `TestNormalizePhone`: `"600 100 200"`, `"600-100-200"`, `"48600100200"`, `"+48 600100200"`, `"0048600100200"` → `"+48600100200"`. `"12345"`, `"+49600100200"`, `"6001002001"` → error.
-  - `TestDefaults`: minimal YAML (base_url, greeting with `{link}`, 3 people, sms.token) gives `DryRun==true`, `ExcludeCouples==true`, `MaxResultSegments==3`, `Language=="pl"`, `SMS.Server=="prod"`, `SMS.PricePerSegment==0.14`, and the default result, reminder and emergency templates from Global Constraints.
+  - `TestNormalizePhone` (default `"+48"`): `"600 100 200"`, `"600-100-200"`, `"+48 600100200"`, `"0048600100200"` → `"+48600100200"`. `"+49 1512 3456789"` → `"+4915123456789"`. `"12"`, `"+48abc"`, `"+1234567890123456"` (16 digits) → error. With default `""`: `"600100200"` → error, `"+48600100200"` OK.
+  - `TestDefaults`: minimal YAML (base_url, greeting with `{link}`, 3 people, sms.token) gives `DryRun==true`, `ExcludeCouples==true`, `MaxResultSegments==3`, `Language=="en"`, `SMS.Server=="prod"`, `SMS.PricePerSegment==0.14`, and the English result, reminder and emergency templates from Global Constraints.
+  - `TestPolishDefaults`: same YAML plus `language: pl` → the Polish templates.
   - `TestExplicitFalse`: `dry_run: false` and `exclude_couples: false` are respected.
   - `TestEnvToken`: with `t.Setenv("CHRISTMAS_DRAW_SMS_TOKEN","envtok")`, `SMS.Token=="envtok"`.
-  - `TestValidateProblems`: one config containing each problem returns `Problems` with one entry per problem. Assert each with `strings.Contains`:
+  - `TestValidateProblems`: one config containing each problem returns `Problems` with one entry per problem. Assert each by `Msg.Key` (keys `config.*`, named by the implementer and added to both locales):
     - duplicate name `"Ania"`
     - duplicate phone
     - couple referring to unknown `"Zenek"`
     - `"Ania"` in two couples
     - exclusion with unknown name
-    - only 2 people (`"at least 3"`)
+    - only 2 people
     - greeting without `{link}`
     - greeting containing `🎄` (non-GSM after transliteration)
     - `base_url` not starting with `http`
     - `sms.server` `"test"`
-    - `language` `"de"`
+    - `language` `"de"` (no such locale)
+    - `default_country_code` `"48"` (missing `+`)
     - `max_result_segments: 0`
   - `TestTemplatePlaceholders`: result template without `{link}` or `{receiver}` is a problem.
 
@@ -270,7 +302,7 @@ func Result(tmpl, name, receiver, link string, titles []string, maxSegments int)
   - `TestLink`: `Link("https://x.ts.net/", "AB")` == `"https://x.ts.net/p/AB"`.
   - `TestRender`: `Render("Hej {name}! {link}", {"name":"Łucja","link":"L"}, 1)` == `"Hej Lucja! L"`. Template with `🎄` → `*NotGSMError`. A 200-char result with max 1 → `*TooLongError{Segments:2, Max:1}`.
   - `TestResultFitsAll`: 3 short titles, max 3 → summary `"a, b, c"` with no `"..."`.
-  - `TestResultTrims`: 30 titles of 20 chars, max 2 → `smstext.Segments(out) <= 2`, ends with `"... Cala lista: <link>"` (with the default template), and contains the first title.
+  - `TestResultTrims`: 30 titles of 20 chars, max 2 → `smstext.Segments(out) <= 2`, ends with `"... Full list: <link>"` (with the English default template), and contains the first title.
   - `TestResultEmojiTitle`: titles `["🎁", "klocki 🎁 lego"]` → summary is exactly `"klocki  lego"` (first title empty after stripping, so skipped), no error. *(Review Focus 1)*
   - `TestResultHugeSingleTitle`: one 1000-char title, max 1 → fits in 1 segment and contains `"..."`.
   - `TestResultImpossible`: receiver name of 400 chars, max 1 → `*TooLongError`.
@@ -473,7 +505,7 @@ type Preview struct {
 	Cost               float64
 	CostEstimated      bool     // true when Sender.Price failed and config price was used
 	Sample             string   // first message with masked token; "" for results
-	Problems           []string // blocking problems (template too long, not GSM, infeasible, ...)
+	Problems           []locale.Msg // blocking problems (template too long, not GSM, infeasible, ...)
 }
 type Outcome struct {
 	DryRun   bool
@@ -516,7 +548,7 @@ Callers change state only when `Outcome.Sent > 0` and not dry-run. Every exporte
   - `TestAllFail`: every number fails → error, state `Setup`.
   - `TestReminders`: Ania has an item → reminders go only to the other two. In `Setup` → `ErrWrongState`.
   - `TestPreviewGreetings`: `Messages==3`, `Sample` contains `XXXXXXXXXXXXXXXX`, `Cost==0.14*Segments`. With `PriceErr` set, the same cost and `CostEstimated==true`. A greeting too long for 2 segments → `Problems` non-empty, and `SendGreetings` returns an error without sending.
-  - `TestSendTestSMS`: with `dry_run: true`, 1 SMS to `organiser_phone`, text matches `^christmas-draw test \d\d:\d\d kod \d{4}$`, recorded as kind `test`. With no `organiser_phone` → error.
+  - `TestSendTestSMS`: with `dry_run: true`, 1 SMS to `organiser_phone`, text matches `^christmas-draw test \d\d:\d\d code \d{4}$` (English default; with `language: pl`, `kod`), recorded as kind `test`. With no `organiser_phone` → error.
   - `TestRefreshStatuses`: `Fake.Statuses[1]="DELIVERED"` → after refresh, message 1 has that status. A second call within 30s doesn't call `Status` again.
 
 - [ ] **Step 2: Run** `go test ./internal/round/ -run 'Greet|Remind|Preview|TestSMS|Refresh|Partial|AllFail'`. Expected: FAIL.
@@ -539,7 +571,7 @@ Callers change state only when `Outcome.Sent > 0` and not dry-run. Every exporte
 - Produces:
 
 ```go
-type DrawOutcome struct{ DryRun bool; Problems []string; LogPath string }
+type DrawOutcome struct{ DryRun bool; Problems []locale.Msg; LogPath string }
 type Pair struct{ Giver, Receiver string }
 func (r *Round) Draw(ctx context.Context) (DrawOutcome, error)        // Collecting|Drawn (redo)
 func (r *Round) PreviewResults(ctx context.Context) (Preview, error)  // Drawn; Sample always ""
@@ -551,8 +583,8 @@ func (r *Round) ConfirmChange(ctx context.Context, text string) (Outcome, error)
 ```
 
 `Draw` problems (all collected, not just the first):
-- someone has 0 items (`"<name>: empty wish list"`)
-- `Feasible` error
+- someone has 0 items (`draw.empty_list`, arg `name`)
+- `Feasible` error (`draw.infeasible`, args `givers`, `receivers`; or `draw.nobody_allowed`, arg `name`)
 - any result SMS that `message.Result` can't fit
 
 If there are problems, return them with no state change. On success:
@@ -571,8 +603,8 @@ In dry-run, steps 2–3 become log-only: no DB changes, state stays `ChangePendi
 `Unseal` sets `unsealed_at` only if it's unset.
 
 - [ ] **Step 1: Write failing tests:**
-  - `TestDrawBlockedEmptyList`: one person without items → `Problems` contains `"Tomek: empty wish list"`, state `Collecting`, no pairs.
-  - `TestDrawInfeasible`: 3 people, couple → `Problems` contains the `InfeasibleError` text.
+  - `TestDrawBlockedEmptyList`: one person without items → `Problems` contains `locale.M("draw.empty_list","name","Tomek")`, state `Collecting`, no pairs.
+  - `TestDrawInfeasible`: 3 people, couple → `Problems` contains a `draw.infeasible` Msg with `givers` `"Ania, Maciej"` and `receivers` `"Tomek"`.
   - `TestDrawSaves`: all have items → state `Drawn`, `Pairs` passes `draw.Check`.
   - `TestDrawDryRun`: `dry_run: true` → no pairs, state `Collecting`, log has 3 result lines with masked links.
   - `TestRedraw`: `Draw` in `Drawn` works. In `Delivered` → `ErrWrongState`.
@@ -597,7 +629,7 @@ In dry-run, steps 2–3 become log-only: no DB changes, state stays `ChangePendi
 ### Task 10: Person pages
 
 **Files:**
-- Create: `internal/round/person.go`, `internal/round/person_test.go`, `internal/web/server.go`, `internal/web/i18n.go`, `internal/web/templates/layout.html`, `internal/web/templates/person.html`, `internal/web/templates/notfound.html`, `internal/web/static/style.css`, `internal/web/person_test.go`
+- Create: `internal/round/person.go`, `internal/round/person_test.go`, `internal/web/server.go`, `internal/web/templates/layout.html`, `internal/web/templates/person.html`, `internal/web/templates/notfound.html`, `internal/web/static/style.css`, `internal/web/person_test.go`
 
 **Interfaces:**
 - Consumes: Tasks 7–9
@@ -621,7 +653,7 @@ func (r *Round) UpdateItem(ctx context.Context, token string, id int64, in ItemI
 func (r *Round) DeleteItem(ctx context.Context, token string, id int64) error
 // web
 func NewServer(r *round.Round, cfg *config.Config) http.Handler
-func T(lang, key string) string // i18n lookup, falls back to "pl"
+// templates get a "t" func: {{t "person.add_item"}} → locale.T(visitorLang, ...)
 ```
 
 `Editable` = state is `Setup` or `Collecting`, or `cfg.ListsEditableAfterDraw`.
@@ -638,7 +670,7 @@ Routes:
 - `POST /p/{token}/items/{id}/delete`
 - `GET /static/`
 
-POSTs redirect 303 to `/p/{token}`. Errors re-render the page with a translated message. Unknown tokens get a 404 `notfound.html`, the same page for every unknown token. Language: `?lang=pl|en` sets cookie `lang` (1 year); otherwise cookie, then `cfg.Language`.
+POSTs redirect 303 to `/p/{token}`. Errors re-render the page with a translated message. Unknown tokens get a 404 `notfound.html`, the same page for every unknown token. Language: `?lang=<code>` (any `locale.Has` code) sets cookie `lang` (1 year); otherwise cookie, then `cfg.Language`. The layout has a switcher listing `locale.Available()` by their `lang.name`. Set `<html lang="…">`.
 
 The page layout:
 - Your own list with add / edit / delete forms when `Editable`.
@@ -657,11 +689,11 @@ The page layout:
   - `TestAddItemFlow`: POST a form with a title → 303, then the GET shows the title.
   - `TestJavascriptLinkRejected`: POST with link `javascript:alert(1)` → 200 with an error message, and the item isn't stored.
   - `TestTitleEscaped`: title `<script>x</script>` is shown escaped.
-  - `TestLangSwitch`: `?lang=en` → `Set-Cookie: lang=en` and an English string from `i18n.go`.
+  - `TestLangSwitch`: default page is English. `?lang=pl` → `Set-Cookie: lang=pl` and the Polish `person.add_item` text. `?lang=xx` is ignored (stays English, no cookie).
 
 - [ ] **Step 3: Run** `go test ./internal/round/ ./internal/web/`. Expected: FAIL.
 
-- [ ] **Step 4: Implement** `person.go`, `server.go` (person routes), `i18n.go`, the templates, and the CSS. Templates and static files use `//go:embed`.
+- [ ] **Step 4: Implement** `person.go`, `server.go` (person routes), the templates, the CSS, and new `person.*` keys in both locale files. Templates and static files use `//go:embed`.
 
 - [ ] **Step 5: Run** `go test ./internal/round/ ./internal/web/`. Expected: PASS.
 
@@ -672,7 +704,7 @@ The page layout:
 ### Task 11: Admin page
 
 **Files:**
-- Modify: `internal/web/server.go`, `internal/web/i18n.go`
+- Modify: `internal/web/server.go`, `internal/locale/locales/en.json`, `internal/locale/locales/pl.json`
 - Create: `internal/web/templates/admin.html`, `internal/web/templates/unseal.html`, `internal/web/admin_test.go`
 
 **Interfaces:**
@@ -696,12 +728,12 @@ Routes. All start with `/admin/{token}`. An invalid admin token gets the same 40
 What the page shows:
 - **Status:** the state, a dry-run banner, and the config path to the dry-run log when relevant.
 - **People table:** name, number of items, greeted yes/no, last message kind and status. No tokens, ever.
-- **Checks:** feasibility in plain words (from `InfeasibleError`).
+- **Checks:** feasibility in plain words (the `draw.*` Msgs in the visitor's language).
 - **Action:** the next action for the state, with its preview (messages, segments, cost, "estimated" marker, problems).
 - **Unsealed notice:** `"results were viewed on <date> at <time>"` when unsealed.
 - **Change pending:** added and removed names, a textarea prefilled with `cfg.EmergencyTemplate`, and preview and send buttons.
 
-Every POST that sends SMS or unseals needs a `confirm=yes` form field, which comes from a checkbox in the form. Without it the page re-renders with "please confirm". After an action, redirect 303 to the admin page with a flash message in the query: `?msg=<i18n key>&n=<count>`. Failed names are shown too.
+Every POST that sends SMS or unseals needs a `confirm=yes` form field, which comes from a checkbox in the form. Without it the page re-renders with "please confirm". After an action, redirect 303 to the admin page with a flash message in the query: `?msg=<locale key>&n=<count>`. Failed names are shown too.
 
 - [ ] **Step 1: Write failing tests** (`admin_test.go`):
   - `TestAdminNoTokensLeak`: in every state (`Setup` → `Collecting` → `Drawn` → `Delivered` → `ChangePending`), the admin body contains no person token, and (from `Drawn` on) none of the result SMS texts that `Fake.Sent` received or that `message.Result` would produce.
@@ -740,7 +772,7 @@ The dry-run log is `dry-run.log` next to the DB.
 
 Commands:
 - `serve` (also the default when no command is given): `Load`, `Open`, `Sync`. On first start, print `Admin page: <base_url>/admin/<token>` once. Then `http.ListenAndServe` with graceful shutdown on SIGINT/SIGTERM.
-- `check`: `Load`, validate, `draw.Feasible`, render the greeting for the first person. Print problems and exit 1, or print `OK` and exit 0. Doesn't touch the DB.
+- `check`: `Load`, validate, `draw.Feasible`, render the greeting for the first person. Print problems in `cfg.Language` (English if the config didn't parse) and exit 1, or print `OK` and exit 0. Doesn't touch the DB.
 - `reset`: print what will be wiped and ask the user to type `reset`; `-yes` skips the prompt. Then `Store.Reset`.
 - `admin-link`: print the admin URL from the DB, or exit 1 if there isn't one yet.
 
@@ -757,6 +789,7 @@ README sections:
 6. **Making it reachable without opening ports:** Tailscale Funnel (`tailscale funnel 8080`) and Cloudflare Tunnel (`cloudflared tunnel`), and why no router ports are needed.
 7. **Secrecy and its limits:** the DB file contains the pairs.
 8. **Fresh year:** `reset`.
+9. **Adding a language:** copy `en.json`, translate, rebuild; `TestLocalesComplete` checks nothing is missing.
 
 CLAUDE.md: replace "Project status" with:
 - build, test, single-test, and integration-test commands
@@ -765,7 +798,7 @@ CLAUDE.md: replace "Project status" with:
 
 - [ ] **Step 1: Write failing tests** (`main_test.go`):
   - `TestCheckOK`: valid config → exit 0, stdout `OK`.
-  - `TestCheckProblems`: infeasible config → exit 1, stdout contains `"can only draw from"`.
+  - `TestCheckProblems`: infeasible config → exit 1, stdout contains `locale.M("draw.infeasible",…).In("en")`. With `language: pl`, the Polish text.
   - `TestResetNeedsConfirm`: stdin `"no\n"` → DB unchanged. stdin `"reset\n"` → people table empty.
   - `TestAdminLink`: after `Sync` through a temp setup, output is `<base_url>/admin/<16 chars>`.
 
