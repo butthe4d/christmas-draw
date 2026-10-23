@@ -253,24 +253,7 @@ func (r *Round) sync(ctx context.Context, tx *store.Store) (SyncReport, error) {
 		return nil
 	}
 	applyStructure := func() error {
-		for _, name := range rep.Diff.Removed {
-			if err := tx.DeletePerson(ctx, byName[name].ID); err != nil {
-				return err
-			}
-		}
-		for _, cp := range r.cfg.People {
-			if _, ok := byName[cp.Name]; ok {
-				continue
-			}
-			t, err := r.uniqueToken(used)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.AddPerson(ctx, cp.Name, cp.Phone, t); err != nil {
-				return err
-			}
-		}
-		return tx.SetMeta(ctx, metaRulesHash, newHash)
+		return r.applyStructure(ctx, tx, people, rep.Diff, used, newHash)
 	}
 
 	if err := applyPhones(); err != nil {
@@ -345,4 +328,31 @@ func (r *Round) diff(people []store.Person, oldHash string, haveHash bool, newHa
 	}
 	d.RulesChanged = haveHash && oldHash != newHash
 	return d
+}
+
+// applyStructure deletes removed people, adds newcomers with fresh tokens
+// (recorded in used) and stores the new rules hash.
+func (r *Round) applyStructure(ctx context.Context, tx *store.Store, people []store.Person, d Diff, used map[string]bool, newHash string) error {
+	byName := map[string]store.Person{}
+	for _, p := range people {
+		byName[p.Name] = p
+	}
+	for _, name := range d.Removed {
+		if err := tx.DeletePerson(ctx, byName[name].ID); err != nil {
+			return err
+		}
+	}
+	for _, cp := range r.cfg.People {
+		if _, ok := byName[cp.Name]; ok {
+			continue
+		}
+		t, err := r.uniqueToken(used)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.AddPerson(ctx, cp.Name, cp.Phone, t); err != nil {
+			return err
+		}
+	}
+	return tx.SetMeta(ctx, metaRulesHash, newHash)
 }

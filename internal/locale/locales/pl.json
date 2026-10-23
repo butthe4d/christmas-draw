@@ -34,5 +34,9 @@
   "problem.sms_error": "Nie można przygotować SMS-a (rodzaj: {kind}): {error}",
   "send.all_failed": "Wszystkie SMS-y ({count}) się nie powiodły. Pierwszy błąd: {error}",
   "send.no_organiser_phone": "Brak organiser_phone, więc SMS testowy nie ma dokąd pójść.",
-  "send.test_failed": "SMS testowy się nie powiódł: {error}"
+  "send.test_failed": "SMS testowy się nie powiódł: {error}",
+  "draw.empty_list": "{name} nie dodał(a) jeszcze nic do swojej listy życzeń.",
+  "draw.no_pairs": "Nie ma zapisanego losowania.",
+  "draw.invariant": "Losowanie nie przeszło kontroli poprawności: {error}",
+  "draw.person_missing": "Losowanie wskazuje osobę, której nie ma już w grupie."
 }

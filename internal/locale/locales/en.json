@@ -34,5 +34,9 @@
   "problem.sms_error": "The {kind} SMS cannot be built: {error}",
   "send.all_failed": "All {count} SMS failed. First error: {error}",
   "send.no_organiser_phone": "organiser_phone is not set, so the test SMS has nowhere to go.",
-  "send.test_failed": "The test SMS failed: {error}"
+  "send.test_failed": "The test SMS failed: {error}",
+  "draw.empty_list": "{name} has not added anything to their wish list yet.",
+  "draw.no_pairs": "There is no saved draw.",
+  "draw.invariant": "The draw failed its safety check: {error}",
+  "draw.person_missing": "The draw refers to a person who is no longer in the group."
 }
