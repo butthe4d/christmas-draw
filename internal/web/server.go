@@ -36,7 +36,7 @@ type server struct {
 func NewServer(r *round.Round, cfg *config.Config) http.Handler {
 	s := &server{r: r, cfg: cfg, tpls: map[string]*template.Template{}}
 	noT := func(string, ...string) string { return "" }
-	for _, page := range []string{"person", "notfound", "error"} {
+	for _, page := range []string{"person", "notfound", "error", "admin", "unseal"} {
 		s.tpls[page] = template.Must(template.New("").Funcs(template.FuncMap{"t": noT}).
 			ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html"))
 	}
@@ -47,6 +47,16 @@ func NewServer(r *round.Round, cfg *config.Config) http.Handler {
 	mux.HandleFunc("POST /p/{token}/items", s.personAdd)
 	mux.HandleFunc("POST /p/{token}/items/{id}", s.personUpdate)
 	mux.HandleFunc("POST /p/{token}/items/{id}/delete", s.personDelete)
+	mux.HandleFunc("GET /admin/{token}", s.admin(s.adminPage))
+	mux.HandleFunc("POST /admin/{token}/greetings", s.admin(s.adminGreetings))
+	mux.HandleFunc("POST /admin/{token}/reminders", s.admin(s.adminReminders))
+	mux.HandleFunc("POST /admin/{token}/people/{id}/greeting", s.admin(s.adminResendGreeting))
+	mux.HandleFunc("POST /admin/{token}/test-sms", s.admin(s.adminTestSMS))
+	mux.HandleFunc("POST /admin/{token}/draw", s.admin(s.adminDraw))
+	mux.HandleFunc("POST /admin/{token}/results", s.admin(s.adminResults))
+	mux.HandleFunc("POST /admin/{token}/people/{id}/result", s.admin(s.adminResendResult))
+	mux.HandleFunc("POST /admin/{token}/unseal", s.admin(s.adminUnseal))
+	mux.HandleFunc("POST /admin/{token}/change", s.admin(s.adminChange))
 	files := http.StripPrefix("/static/", http.FileServerFS(static))
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, req *http.Request) {
 		name := strings.TrimPrefix(req.URL.Path, "/static/")

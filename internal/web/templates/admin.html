@@ -1,0 +1,106 @@
+{{define "preview"}}
+{{if .}}
+<div class="preview">
+<p><strong>{{t "admin.preview.summary" "messages" (printf "%d" .Messages) "segments" (printf "%d" .Segments) "cost" (printf "%.2f" .Cost)}}</strong>{{if .CostEstimated}} <em>{{t "admin.preview.estimated"}}</em>{{end}}</p>
+{{if .Sample}}<p class="muted">{{t "admin.preview.sample"}}</p><pre class="sample">{{.Sample}}</pre>{{end}}
+{{range .ProblemText}}<p class="error" role="alert">{{.}}</p>
+{{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "confirm"}}<label class="confirm"><input type="checkbox" name="confirm" value="yes"> {{t "admin.confirm.label"}}</label>{{end}}
+
+{{define "content"}}
+<section class="card">
+<h1>{{t "admin.title"}}</h1>
+<p>{{t "admin.state.label"}}: <strong>{{t (printf "admin.state.%s" .Ov.State)}}</strong></p>
+{{if .Ov.DryRun}}<p class="frozen">{{t "admin.dryrun.banner"}} {{t "admin.dryrun.log"}}: <code>{{.DryLog}}</code></p>{{end}}
+{{with .Flash}}<p class="flash" role="status">{{t .Key "n" .N}}{{if .Failed}} {{t "admin.flash.failed"}}: {{range $i, $n := .Failed}}{{if $i}}, {{end}}{{$n}}{{end}}{{end}}</p>{{end}}
+{{range .Errors}}<p class="error" role="alert">{{.}}</p>
+{{end}}
+{{if .NeedConfirm}}<p class="error" role="alert">{{t "admin.confirm.needed"}}</p>{{end}}
+{{if .DrawProblems}}<div role="alert"><p class="error">{{t "admin.draw.blocked"}}</p>
+{{range .DrawProblems}}<p class="error">{{.}}</p>
+{{end}}</div>{{end}}
+{{with .Test}}<p class="flash" role="status">{{t "admin.test.result" "to" .To "id" (printf "%d" .ProviderID) "status" .Status}}</p>{{end}}
+{{if .Ov.UnsealedAt}}<p class="frozen">{{t "admin.unsealed.notice" "date" .UnsealedDate "time" .UnsealedTime}}</p>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "admin.people.heading"}}</h2>
+<table class="people">
+<thead><tr><th>{{t "admin.col.name"}}</th><th>{{t "admin.col.items"}}</th><th>{{t "admin.col.greeted"}}</th><th>{{t "admin.col.last"}}</th><th></th></tr></thead>
+<tbody>
+{{range .Ov.People}}<tr>
+<td>{{.Name}}</td><td>{{.Items}}</td>
+<td>{{if .Greeted}}{{t "admin.yes"}}{{else}}{{t "admin.no"}}{{end}}</td>
+<td>{{if .LastKind}}{{t (printf "admin.kind.%s" .LastKind)}}: {{.LastStatus}}{{else}}-{{end}}</td>
+<td>
+{{if ne $.Ov.State "SETUP"}}<form method="post" action="/admin/{{$.Token}}/people/{{.ID}}/greeting" class="inline">{{template "confirm" $}}<button type="submit">{{t "admin.resend.greeting"}}</button></form>{{end}}
+{{if or (eq $.Ov.State "DELIVERED") (eq $.Ov.State "CHANGE_PENDING")}}<form method="post" action="/admin/{{$.Token}}/people/{{.ID}}/result" class="inline">{{template "confirm" $}}<button type="submit">{{t "admin.resend.result"}}</button></form>{{end}}
+</td>
+</tr>
+{{end}}</tbody>
+</table>
+</section>
+
+<section class="card">
+<h2>{{t "admin.checks.heading"}}</h2>
+{{if .Feasibility}}<p class="error">{{.Feasibility}}</p>{{else}}<p>{{t "admin.checks.ok"}}</p>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "admin.action.heading"}}</h2>
+
+{{if or (eq .Ov.State "SETUP") (and (eq .Ov.State "COLLECTING") (gt .Ov.Ungreeted 0))}}
+<h3>{{t "admin.greetings.heading"}}</h3>
+{{template "preview" .Greetings}}
+<form method="post" action="/admin/{{.Token}}/greetings">{{template "confirm" .}} <button type="submit">{{t "admin.greetings.send"}}</button></form>
+{{end}}
+
+{{if eq .Ov.State "COLLECTING"}}
+<h3>{{t "admin.reminders.heading"}}</h3>
+{{template "preview" .Reminders}}
+<form method="post" action="/admin/{{.Token}}/reminders">{{template "confirm" .}} <button type="submit">{{t "admin.reminders.send"}}</button></form>
+{{end}}
+
+{{if or (eq .Ov.State "COLLECTING") (eq .Ov.State "DRAWN")}}
+<h3>{{t "admin.draw.heading"}}</h3>
+{{if .Feasibility}}<p class="error">{{.Feasibility}}</p>{{end}}
+<form method="post" action="/admin/{{.Token}}/draw"><button type="submit">{{if eq .Ov.State "DRAWN"}}{{t "admin.draw.redo"}}{{else}}{{t "admin.draw.run"}}{{end}}</button></form>
+{{end}}
+
+{{if eq .Ov.State "DRAWN"}}
+<h3>{{t "admin.results.heading"}}</h3>
+<p class="muted">{{t "admin.results.hidden"}}</p>
+{{template "preview" .Results}}
+<form method="post" action="/admin/{{.Token}}/results">{{template "confirm" .}} <button type="submit">{{t "admin.results.send"}}</button></form>
+{{end}}
+
+{{if eq .Ov.State "CHANGE_PENDING"}}
+<h3>{{t "admin.change.heading"}}</h3>
+{{with .Ov.Pending}}
+<p>{{t "admin.change.added"}}: {{if .Added}}{{range $i, $n := .Added}}{{if $i}}, {{end}}{{$n}}{{end}}{{else}}-{{end}}</p>
+<p>{{t "admin.change.removed"}}: {{if .Removed}}{{range $i, $n := .Removed}}{{if $i}}, {{end}}{{$n}}{{end}}{{else}}-{{end}}</p>
+{{if .RulesChanged}}<p>{{t "admin.change.rules"}}</p>{{end}}
+{{end}}
+<form method="post" action="/admin/{{.Token}}/change" class="item-form">
+<label>{{t "admin.change.text"}}<textarea name="text" rows="3">{{.ChangeText}}</textarea></label>
+{{template "preview" .Change}}
+{{template "confirm" .}}
+<div class="actions"><button type="submit" name="action" value="preview">{{t "admin.change.preview"}}</button>
+<button type="submit" name="action" value="send">{{t "admin.change.send"}}</button></div>
+</form>
+{{end}}
+
+{{if or (eq .Ov.State "DRAWN") (eq .Ov.State "DELIVERED") (eq .Ov.State "CHANGE_PENDING")}}
+<h3>{{t "admin.unseal.heading"}}</h3>
+<p class="muted">{{t "admin.unseal.warning"}}</p>
+<form method="post" action="/admin/{{.Token}}/unseal">{{template "confirm" .}} <button type="submit" class="danger">{{t "admin.unseal.button"}}</button></form>
+{{end}}
+
+<h3>{{t "admin.test.heading"}}</h3>
+<form method="post" action="/admin/{{.Token}}/test-sms">{{template "confirm" .}} <button type="submit">{{t "admin.test.send"}}</button></form>
+</section>
+{{end}}

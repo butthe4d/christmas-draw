@@ -33,6 +33,8 @@ type env struct {
 	st     *store.Store
 	tokens map[string]string // name -> token
 	admin  string
+	fake   *sender.Fake
+	dry    string
 }
 
 func newEnv(t *testing.T, yaml string) *env {
@@ -47,7 +49,9 @@ func newEnv(t *testing.T, yaml string) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	r := round.New(cfg, st, &sender.Fake{}, sender.DryRunLog{Path: filepath.Join(dir, "dry.log")}, round.Options{})
+	fake := &sender.Fake{}
+	dry := filepath.Join(dir, "dry.log")
+	r := round.New(cfg, st, fake, sender.DryRunLog{Path: dry}, round.Options{})
 	ctx := context.Background()
 	if _, err := r.Sync(ctx); err != nil {
 		t.Fatal(err)
@@ -64,7 +68,7 @@ func newEnv(t *testing.T, yaml string) *env {
 	for _, p := range people {
 		tokens[p.Name] = p.Token
 	}
-	return &env{h: NewServer(r, cfg), r: r, st: st, tokens: tokens, admin: admin}
+	return &env{h: NewServer(r, cfg), r: r, st: st, tokens: tokens, admin: admin, fake: fake, dry: dry}
 }
 
 func (e *env) get(path string) *httptest.ResponseRecorder {

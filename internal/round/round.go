@@ -147,6 +147,9 @@ func (r *Round) rulesHash() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// DryRunLogPath is where dry-run messages are written.
+func (r *Round) DryRunLogPath() string { return r.dry.Path }
+
 func (r *Round) State(ctx context.Context) (State, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
