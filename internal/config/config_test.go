@@ -115,7 +115,7 @@ base_url: "ftp://x"
 greeting: "Hi 🎄"
 language: de
 default_country_code: "48"
-max_result_segments: -1
+max_result_segments: 0
 people:
   - { name: Ania, phone: "+48600100200" }
   - { name: " Ania ", phone: "+48600100201" }
@@ -135,15 +135,21 @@ sms:
 		t.Fatal("want error")
 	}
 	got := keys(err)
-	for _, k := range []string{
-		"config.name_duplicate", "config.phone_duplicate", "config.phone_invalid",
-		"config.couple_unknown", "config.couple_multiple", "config.exclusion_unknown",
-		"config.greeting_link", "config.template_non_gsm", "config.base_url",
-		"config.sms_server", "config.language", "config.country_code",
-		"config.max_segments", "config.sms_token",
-	} {
-		if got[k] == 0 {
-			t.Errorf("missing problem %s; got %v", k, got)
+	want := map[string]int{
+		"config.name_duplicate": 1, "config.phone_duplicate": 1, "config.phone_invalid": 1,
+		"config.couple_unknown": 1, "config.couple_multiple": 1, "config.exclusion_unknown": 1,
+		"config.greeting_link": 1, "config.template_non_gsm": 1, "config.base_url": 1,
+		"config.sms_server": 1, "config.language": 1, "config.country_code": 1,
+		"config.max_segments": 1, "config.sms_token": 1,
+	}
+	for k, n := range want {
+		if got[k] != n {
+			t.Errorf("%s: got %d want %d", k, got[k], n)
+		}
+	}
+	for k := range got {
+		if _, ok := want[k]; !ok {
+			t.Errorf("unexpected problem %s", k)
 		}
 	}
 	if err.Error() == "" || !strings.Contains(err.Error(), "; ") {
@@ -205,6 +211,9 @@ func allKeys() []string {
 		"config.max_segments",
 		"config.sms_server",
 		"config.sms_token",
+		"config.read_failed",
+		"config.yaml_invalid",
+		"config.phone_invalid_number",
 		"config.organiser_phone",
 		"config.placeholder_missing",
 		"config.template_non_gsm",
@@ -224,5 +233,26 @@ func allKeys() []string {
 func TestExampleFileLoads(t *testing.T) {
 	if _, err := Load("../../config.example.yaml"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMisspelledKeyRejected(t *testing.T) {
+	_, err := Parse([]byte(minimal + "exclude_couple: false\n"))
+	var m locale.Msg
+	if !errors.As(err, &m) || m.Key != "config.yaml_invalid" {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestErrorsAreMsgs(t *testing.T) {
+	var m locale.Msg
+	if _, err := NormalizePhone("12", "+48"); !errors.As(err, &m) || m.Key != "config.phone_invalid_number" {
+		t.Errorf("got %v", err)
+	}
+	if _, err := Load("/nonexistent/x.yaml"); !errors.As(err, &m) || m.Key != "config.read_failed" {
+		t.Errorf("got %v", err)
+	}
+	if _, err := Parse([]byte("people: [")); !errors.As(err, &m) || m.Key != "config.yaml_invalid" {
+		t.Errorf("got %v", err)
 	}
 }

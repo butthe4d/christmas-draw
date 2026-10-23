@@ -22,5 +22,8 @@
   "config.couple_unknown": "Couple refers to unknown person \"{name}\".",
   "config.couple_self": "\"{name}\" is paired with themselves in couples.",
   "config.couple_multiple": "\"{name}\" is in more than one couple.",
-  "config.exclusion_unknown": "Exclusion refers to unknown person \"{name}\"."
+  "config.exclusion_unknown": "Exclusion refers to unknown person \"{name}\".",
+  "config.read_failed": "Cannot read config file {path}: {error}",
+  "config.yaml_invalid": "Invalid config file: {error}",
+  "config.phone_invalid_number": "\"{phone}\" is not a valid phone number."
 }

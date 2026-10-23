@@ -22,5 +22,8 @@
   "config.couple_unknown": "Para odwołuje się do nieznanej osoby \"{name}\".",
   "config.couple_self": "\"{name}\" jest sparowany(-a) sam(a) ze sobą.",
   "config.couple_multiple": "\"{name}\" jest w więcej niż jednej parze.",
-  "config.exclusion_unknown": "Wykluczenie odwołuje się do nieznanej osoby \"{name}\"."
+  "config.exclusion_unknown": "Wykluczenie odwołuje się do nieznanej osoby \"{name}\".",
+  "config.read_failed": "Nie można odczytać pliku konfiguracji {path}: {error}",
+  "config.yaml_invalid": "Nieprawidłowy plik konfiguracji: {error}",
+  "config.phone_invalid_number": "\"{phone}\" nie jest poprawnym numerem telefonu."
 }

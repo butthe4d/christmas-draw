@@ -2,7 +2,10 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -76,7 +79,7 @@ type rawConfig struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, locale.M("config.read_failed", "path", path, "error", err.Error())
 	}
 	return Parse(data)
 }
@@ -85,8 +88,10 @@ func Load(path string) (*Config, error) {
 // Problems error when validation fails, so callers may still inspect it.
 func Parse(data []byte) (*Config, error) {
 	var r rawConfig
-	if err := yaml.Unmarshal(data, &r); err != nil {
-		return nil, err
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true) // a misspelled key must not silently fall back to a default
+	if err := dec.Decode(&r); err != nil && !errors.Is(err, io.EOF) {
+		return nil, locale.M("config.yaml_invalid", "error", err.Error())
 	}
 	c := &Config{
 		BaseURL:                strings.TrimSpace(r.BaseURL),
@@ -172,7 +177,7 @@ func Parse(data []byte) (*Config, error) {
 var phoneRE = regexp.MustCompile(`^\+[0-9]{8,15}$`)
 var phoneJunk = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "", "\t", "")
 
-// NormalizePhone converts s to E.164. Numbers without "+" or "00" get
+// NormalizePhone converts s to E.164; the error is a locale.Msg. Numbers without "+" or "00" get
 // defaultCountryCode; with no default they are rejected.
 func NormalizePhone(s, defaultCountryCode string) (string, error) {
 	n := phoneJunk.Replace(strings.TrimSpace(s))
@@ -184,7 +189,7 @@ func NormalizePhone(s, defaultCountryCode string) (string, error) {
 		n = defaultCountryCode + n
 	}
 	if !phoneRE.MatchString(n) {
-		return "", fmt.Errorf("invalid phone number %q", s)
+		return "", locale.M("config.phone_invalid_number", "phone", s)
 	}
 	return n, nil
 }
