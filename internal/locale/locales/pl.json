@@ -135,5 +135,14 @@
   "admin.flash.change_sent": "Wysłane informacje o zmianie: {n}. Listy życzeń zachowano.",
   "admin.flash.wrong_state": "Ta czynność nie jest możliwa w obecnym stanie. Nic nie wysłano.",
   "admin.flash.error": "Coś poszło nie tak. Sprawdź stan poniżej, zanim spróbujesz ponownie.",
-  "admin.flash.failed": "Nie udało się dla"
+  "admin.flash.failed": "Nie udało się dla",
+  "cli.usage": "Użycie: christmas-draw [serve|check|reset|admin-link] [-config PLIK] [-db PLIK] [-addr ADRES] [-yes]",
+  "cli.unknown_command": "Nieznane polecenie \"{command}\".",
+  "cli.error": "Błąd: {error}",
+  "cli.ok": "OK",
+  "cli.admin_page": "Strona organizatora: {url}",
+  "cli.admin_link_none": "Brak jeszcze linku organizatora. Uruchom serwer raz poleceniem \"serve\".",
+  "cli.reset_warning": "To usunie wszystko z {db}: osoby, listy życzeń, losowanie i zapis wysłanych wiadomości. Wpisz \"reset\", aby kontynuować:",
+  "cli.reset_aborted": "Nic nie zmieniono.",
+  "cli.reset_done": "Wszystkie dane usunięte. Następne uruchomienie zaczyna nowy rok."
 }

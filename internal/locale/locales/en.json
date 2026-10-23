@@ -135,5 +135,14 @@
   "admin.flash.change_sent": "Change notices sent: {n}. Wish lists were kept.",
   "admin.flash.wrong_state": "That action is not possible in the current state. Nothing was sent.",
   "admin.flash.error": "Something went wrong. Check the state below before trying again.",
-  "admin.flash.failed": "Failed for"
+  "admin.flash.failed": "Failed for",
+  "cli.usage": "Usage: christmas-draw [serve|check|reset|admin-link] [-config FILE] [-db FILE] [-addr ADDR] [-yes]",
+  "cli.unknown_command": "Unknown command \"{command}\".",
+  "cli.error": "Error: {error}",
+  "cli.ok": "OK",
+  "cli.admin_page": "Admin page: {url}",
+  "cli.admin_link_none": "No admin link yet. Start the server once with \"serve\".",
+  "cli.reset_warning": "This deletes everything in {db}: people, wish lists, the draw and the record of sent messages. Type \"reset\" to continue:",
+  "cli.reset_aborted": "Nothing was changed.",
+  "cli.reset_done": "All data deleted. The next start begins a fresh year."
 }

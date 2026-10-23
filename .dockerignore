@@ -1,0 +1,6 @@
+.git
+.superpowers
+*.db
+*.db-*
+dry-run.log
+config.yaml
