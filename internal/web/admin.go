@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/butthe4d/christmas-draw/internal/locale"
 	"github.com/butthe4d/christmas-draw/internal/round"
@@ -176,7 +175,7 @@ func flashFrom(req *http.Request, ov round.Overview) *flashView {
 	for _, p := range ov.People {
 		known[p.Name] = true
 	}
-	for _, name := range strings.Split(q.Get("failed"), ",") {
+	for _, name := range q["failed"] {
 		if known[name] {
 			f.Failed = append(f.Failed, name)
 		}
@@ -186,8 +185,8 @@ func flashFrom(req *http.Request, ov round.Overview) *flashView {
 
 func (s *server) redirect(w http.ResponseWriter, req *http.Request, tok, key string, n int, failed []string) {
 	u := "/admin/" + tok + "?msg=" + key + "&n=" + strconv.Itoa(n)
-	if len(failed) > 0 {
-		u += "&failed=" + url.QueryEscape(strings.Join(failed, ","))
+	for _, name := range failed {
+		u += "&failed=" + url.QueryEscape(name)
 	}
 	http.Redirect(w, req, u, http.StatusSeeOther)
 }
@@ -289,6 +288,12 @@ func (s *server) adminTestSMS(w http.ResponseWriter, req *http.Request, lang, to
 }
 
 func (s *server) adminDraw(w http.ResponseWriter, req *http.Request, lang, tok string) {
+	// Drawing again replaces the sealed draw, so it needs confirmation.
+	if st, err := s.r.State(req.Context()); err == nil && st == round.Drawn {
+		if !s.confirmed(w, req, lang, tok, adminExtra{}) {
+			return
+		}
+	}
 	out, err := s.r.Draw(req.Context())
 	switch {
 	case err != nil:

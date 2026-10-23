@@ -68,7 +68,7 @@
 {{if or (eq .Ov.State "COLLECTING") (eq .Ov.State "DRAWN")}}
 <h3>{{t "admin.draw.heading"}}</h3>
 {{if .Feasibility}}<p class="error">{{.Feasibility}}</p>{{end}}
-<form method="post" action="/admin/{{.Token}}/draw"><button type="submit">{{if eq .Ov.State "DRAWN"}}{{t "admin.draw.redo"}}{{else}}{{t "admin.draw.run"}}{{end}}</button></form>
+<form method="post" action="/admin/{{.Token}}/draw">{{if eq .Ov.State "DRAWN"}}{{template "confirm" .}} {{end}}<button type="submit">{{if eq .Ov.State "DRAWN"}}{{t "admin.draw.redo"}}{{else}}{{t "admin.draw.run"}}{{end}}</button></form>
 {{end}}
 
 {{if eq .Ov.State "DRAWN"}}

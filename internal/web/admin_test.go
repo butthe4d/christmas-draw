@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/butthe4d/christmas-draw/internal/config"
+	"github.com/butthe4d/christmas-draw/internal/message"
 	"github.com/butthe4d/christmas-draw/internal/round"
 	"github.com/butthe4d/christmas-draw/internal/sender"
+	"github.com/butthe4d/christmas-draw/internal/store"
 )
 
 const fourYAML = `base_url: https://x.test
@@ -64,9 +66,62 @@ func (e *env) reconfigure(t *testing.T, yaml string) {
 	e.h = NewServer(r, cfg)
 }
 
-func (e *env) assertNoSecrets(t *testing.T, label string, withResults bool) {
+// expectedResults builds the result SMS texts the way round does, from the
+// stored pairs and items, using the config's template and each giver's token.
+func (e *env) expectedResults(t *testing.T, yaml string) []string {
+	t.Helper()
+	ctx := context.Background()
+	cfg, err := config.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	people, err := e.st.People(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]store.Person{}
+	for _, p := range people {
+		byID[p.ID] = p
+	}
+	pairs, err := e.st.Pairs(ctx)
+	if err != nil || len(pairs) == 0 {
+		t.Fatalf("pairs: %v (%d)", err, len(pairs))
+	}
+	var out []string
+	for g, rc := range pairs {
+		items, err := e.st.Items(ctx, rc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var titles []string
+		for _, it := range items {
+			titles = append(titles, it.Title)
+		}
+		for _, tok := range []string{byID[g].Token, message.MaskedToken} {
+			txt, err := message.Result(cfg.ResultTemplate, byID[g].Name, byID[rc].Name, message.Link(cfg.BaseURL, tok), titles, cfg.MaxResultSegments)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, txt)
+		}
+	}
+	return out
+}
+
+func (e *env) assertNoSecrets(t *testing.T, label, yaml string, withResults bool) {
 	t.Helper()
 	body := e.ag("")
+	if withResults {
+		for _, txt := range e.expectedResults(t, yaml) {
+			if strings.Contains(html.UnescapeString(body), txt) {
+				t.Errorf("%s: admin page contains result SMS %q", label, txt)
+			}
+		}
+		// the markup unseal.html uses for a pair, and its arrow
+		if strings.Contains(body, `class="pair"`) || strings.Contains(body, "&rarr;") || strings.Contains(body, "\u2192") {
+			t.Errorf("%s: admin page shows pairs before unseal", label)
+		}
+	}
 	for _, tok := range e.tokens {
 		if strings.Contains(body, tok) {
 			t.Errorf("%s: admin page leaks a person token", label)
@@ -83,19 +138,19 @@ func (e *env) assertNoSecrets(t *testing.T, label string, withResults bool) {
 
 func TestAdminNoTokensLeak(t *testing.T) {
 	e := newEnv(t, fourYAML)
-	e.assertNoSecrets(t, "setup", false)
+	e.assertNoSecrets(t, "setup", fourYAML, false)
 	e.ap("/greetings", yes)
-	e.assertNoSecrets(t, "collecting", false)
+	e.assertNoSecrets(t, "collecting", fourYAML, false)
 	e.addItems(t)
 	e.ap("/draw", url.Values{})
-	e.assertNoSecrets(t, "drawn", true)
+	e.assertNoSecrets(t, "drawn", fourYAML, true)
 	e.ap("/results", yes)
-	e.assertNoSecrets(t, "delivered", true)
+	e.assertNoSecrets(t, "delivered", fourYAML, true)
 	if len(e.fake.Sent) != 8 {
 		t.Fatalf("sent %d, want 8", len(e.fake.Sent))
 	}
 	e.reconfigure(t, strings.Replace(fourYAML, "  - { name: \"Ola\", phone: \"+48600100400\" }\n", "", 1))
-	e.assertNoSecrets(t, "change pending", true)
+	e.assertNoSecrets(t, "change pending", fourYAML, true)
 	if st, _ := e.r.State(context.Background()); st != round.ChangePending {
 		t.Fatalf("state %s", st)
 	}
@@ -235,5 +290,54 @@ func TestAdminBadToken(t *testing.T) {
 	}
 	if w := e.post("/admin/"+e.tokens["Ania"]+"/greetings", yes); w.Code != http.StatusNotFound || len(e.fake.Sent) != 0 {
 		t.Errorf("POST bad token: %d", w.Code)
+	}
+}
+
+func TestAdminConfirmRequiredResultsUnsealRedraw(t *testing.T) {
+	e := newEnv(t, baseYAML)
+	e.ap("/greetings", yes)
+	e.addItems(t)
+	e.ap("/draw", url.Values{})
+	before := len(e.fake.Sent)
+	pairs, _ := e.st.Pairs(context.Background())
+
+	w := e.ap("/results", url.Values{})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "please confirm") || len(e.fake.Sent) != before {
+		t.Errorf("results without confirm: %d, sent %d", w.Code, len(e.fake.Sent)-before)
+	}
+	w = e.ap("/unseal", url.Values{})
+	if !strings.Contains(w.Body.String(), "please confirm") || strings.Contains(w.Body.String(), `class="pair"`) {
+		t.Error("unseal without confirm")
+	}
+	if at, _, _ := e.st.Meta(context.Background(), "unsealed_at"); at != "" {
+		t.Error("unseal recorded without confirm")
+	}
+	// redrawing in Drawn needs confirmation too
+	w = e.ap("/draw", url.Values{})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "please confirm") {
+		t.Errorf("redraw without confirm: %d", w.Code)
+	}
+	after, _ := e.st.Pairs(context.Background())
+	if len(after) != len(pairs) {
+		t.Fatal("pairs changed")
+	}
+	for g, rc := range pairs {
+		if after[g] != rc {
+			t.Error("draw replaced without confirm")
+		}
+	}
+	if w := e.ap("/draw", yes); w.Code != http.StatusSeeOther {
+		t.Errorf("redraw with confirm: %d", w.Code)
+	}
+}
+
+func TestAdminFailedNamesWithCommas(t *testing.T) {
+	yaml := strings.Replace(baseYAML, `"Tomek"`, `"Tomek, Jr"`, 1)
+	e := newEnv(t, yaml)
+	e.fake.FailTo = map[string]bool{"+48600100300": true}
+	w := e.ap("/greetings", yes)
+	body := e.ag(w.Header().Get("Location")[len("/admin/"+e.admin):])
+	if !strings.Contains(body, "Tomek, Jr") {
+		t.Errorf("failed name with comma lost; location %q", w.Header().Get("Location"))
 	}
 }
