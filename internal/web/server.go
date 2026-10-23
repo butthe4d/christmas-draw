@@ -8,8 +8,10 @@ import (
 	"errors"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/butthe4d/christmas-draw/internal/config"
@@ -34,7 +36,7 @@ type server struct {
 func NewServer(r *round.Round, cfg *config.Config) http.Handler {
 	s := &server{r: r, cfg: cfg, tpls: map[string]*template.Template{}}
 	noT := func(string, ...string) string { return "" }
-	for _, page := range []string{"person", "notfound"} {
+	for _, page := range []string{"person", "notfound", "error"} {
 		s.tpls[page] = template.Must(template.New("").Funcs(template.FuncMap{"t": noT}).
 			ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html"))
 	}
@@ -45,7 +47,15 @@ func NewServer(r *round.Round, cfg *config.Config) http.Handler {
 	mux.HandleFunc("POST /p/{token}/items", s.personAdd)
 	mux.HandleFunc("POST /p/{token}/items/{id}", s.personUpdate)
 	mux.HandleFunc("POST /p/{token}/items/{id}/delete", s.personDelete)
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	files := http.StripPrefix("/static/", http.FileServerFS(static))
+	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, req *http.Request) {
+		name := strings.TrimPrefix(req.URL.Path, "/static/")
+		if info, err := fs.Stat(static, name); err != nil || info.IsDir() {
+			s.notFound(w, req)
+			return
+		}
+		files.ServeHTTP(w, req)
+	})
 	mux.HandleFunc("/", s.notFound)
 	return secure(mux)
 }
@@ -69,6 +79,7 @@ type langOpt struct {
 // base is embedded in every page's data.
 type base struct {
 	Lang  string
+	Path  string // canonical GET path of this page; the switcher links to Path?lang=xx
 	Langs []langOpt
 }
 
@@ -88,8 +99,8 @@ func (s *server) visitorLang(w http.ResponseWriter, req *http.Request) string {
 	return s.cfg.Language
 }
 
-func (s *server) newBase(lang string) base {
-	b := base{Lang: lang}
+func (s *server) newBase(lang, path string) base {
+	b := base{Lang: lang, Path: path}
 	for _, c := range locale.Available() {
 		b.Langs = append(b.Langs, langOpt{Code: c, Name: locale.T(c, "lang.name", nil), Current: c == lang})
 	}
@@ -101,7 +112,7 @@ func (s *server) newBase(lang string) base {
 func (s *server) render(w http.ResponseWriter, status int, page, lang string, data any) {
 	t, err := s.tpls[page].Clone()
 	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		s.fail(w, lang, err)
 		return
 	}
 	t = t.Funcs(template.FuncMap{"t": func(key string, kv ...string) string {
@@ -116,7 +127,7 @@ func (s *server) render(w http.ResponseWriter, status int, page, lang string, da
 	}})
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		s.fail(w, lang, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -125,9 +136,28 @@ func (s *server) render(w http.ResponseWriter, status int, page, lang string, da
 	w.Write(buf.Bytes())
 }
 
+// fail logs the error (never the request path or token) and shows a
+// localized generic error page.
+func (s *server) fail(w http.ResponseWriter, lang string, err error) {
+	slog.Error("request failed", "err", err)
+	t, terr := s.tpls["error"].Clone()
+	if terr == nil {
+		t = t.Funcs(template.FuncMap{"t": func(key string, _ ...string) string { return locale.T(lang, key, nil) }})
+		var buf bytes.Buffer
+		if terr = t.ExecuteTemplate(&buf, "layout", s.newBase(lang, "/")); terr == nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write(buf.Bytes())
+			return
+		}
+	}
+	http.Error(w, locale.T(lang, "error.generic", nil), http.StatusInternalServerError)
+}
+
 func (s *server) notFound(w http.ResponseWriter, req *http.Request) {
 	lang := s.visitorLang(w, req)
-	s.render(w, http.StatusNotFound, "notfound", lang, s.newBase(lang))
+	s.render(w, http.StatusNotFound, "notfound", lang, s.newBase(lang, "/"))
 }
 
 type personData struct {
@@ -150,14 +180,14 @@ func (s *server) showPerson(w http.ResponseWriter, req *http.Request, lang strin
 	token := req.PathValue("token")
 	v, err := s.r.PersonView(req.Context(), token)
 	if errors.Is(err, store.ErrNotFound) {
-		s.render(w, http.StatusNotFound, "notfound", lang, s.newBase(lang))
+		s.render(w, http.StatusNotFound, "notfound", lang, s.newBase(lang, "/"))
 		return
 	}
 	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		s.fail(w, lang, err)
 		return
 	}
-	d := personData{base: s.newBase(lang), Token: token, View: v, Draft: draft, EditID: editID}
+	d := personData{base: s.newBase(lang, "/p/"+token), Token: token, View: v, Draft: draft, EditID: editID}
 	if formErr != nil {
 		d.Error = locale.T(lang, errorKey(formErr), nil)
 	}
@@ -195,7 +225,7 @@ func (s *server) afterPost(w http.ResponseWriter, req *http.Request, err error, 
 	}
 	var ie *round.ItemError
 	if !errors.As(err, &ie) && !errors.Is(err, round.ErrNotEditable) && !errors.Is(err, store.ErrNotFound) {
-		http.Error(w, http.StatusText(500), 500)
+		s.fail(w, lang, err)
 		return
 	}
 	s.showPerson(w, req, lang, http.StatusOK, err, draft, editID)

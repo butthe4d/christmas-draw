@@ -11,7 +11,7 @@
 <header class="top">
 <span class="brand">&#127876; {{t "app.title"}}</span>
 <nav class="langs" aria-label="{{t "app.language"}}">
-{{range .Langs}}<a href="?lang={{.Code}}" hreflang="{{.Code}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>
+{{range .Langs}}<a href="{{$.Path}}?lang={{.Code}}" hreflang="{{.Code}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>
 {{end}}</nav>
 </header>
 <main>

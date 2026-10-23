@@ -174,3 +174,26 @@ func TestLetterToSanta(t *testing.T) {
 		}
 	}
 }
+
+func TestSwitcherWorksOnErrorPage(t *testing.T) {
+	e := newEnv(t, baseYAML)
+	p := "/p/" + e.tokens["Maciej"]
+	w := e.post(p+"/items", url.Values{"title": {"x"}, "link": {"javascript:1"}})
+	want := `href="` + p + `?lang=pl"`
+	if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+		t.Fatalf("switcher link missing: %d", w.Code)
+	}
+	w = e.get(p + "?lang=pl")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `<html lang="pl">`) {
+		t.Fatal("follow failed")
+	}
+}
+
+func TestStaticNoListing(t *testing.T) {
+	e := newEnv(t, baseYAML)
+	for _, p := range []string{"/static/", "/static/nope.css"} {
+		if w := e.get(p); w.Code != 404 || !strings.Contains(w.Body.String(), locale.T("en", "notfound.title", nil)) {
+			t.Errorf("%s: %d", p, w.Code)
+		}
+	}
+}
