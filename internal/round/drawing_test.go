@@ -517,3 +517,39 @@ func TestConfirmChangeWrongState(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestConfirmChangeSurvivesClientDisconnect(t *testing.T) {
+	r, st, fake, _ := deliveredRound(t, defaultYAML)
+	reconfigure(t, r, testYAML("", pMaciej, pAnia, pTomek, pZenek))
+	mustSync(t, r)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	out, err := r.ConfirmChange(ctx, "Zmiana!")
+	if err != nil || out.Sent != 4 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	mustState(t, r, Collecting)
+	if !personByName(t, st, "Zenek").Greeted {
+		t.Error("newcomer not marked greeted")
+	}
+	if countKind(t, st, "emergency") != 3 || countKind(t, st, "greeting") != 1 {
+		t.Error("messages not recorded")
+	}
+}
+
+func TestConfirmChangePartialEmergencyFailure(t *testing.T) {
+	ctx := context.Background()
+	r, st, fake, _ := deliveredRound(t, fourYAML())
+	reconfigure(t, r, testYAML("", pMaciej, pAnia, pOla))
+	mustSync(t, r)
+	fake.FailTo = map[string]bool{pAnia.Phone: true}
+	out, err := r.ConfirmChange(ctx, "Zmiana!")
+	if err != nil || out.Sent != 2 || len(out.Failed) != 1 || out.Failed[0] != "Ania" {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	mustState(t, r, Collecting)
+	if countKind(t, st, "emergency") != 2 {
+		t.Error("emergency not recorded for the two who got it")
+	}
+}

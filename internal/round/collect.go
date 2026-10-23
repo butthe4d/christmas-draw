@@ -201,6 +201,16 @@ func (r *Round) withoutItems(ctx context.Context) ([]store.Person, error) {
 	return out, nil
 }
 
+// batchTimeout bounds a detached send/record/state-write sequence.
+const batchTimeout = 2 * time.Minute
+
+// detach returns a context that survives the client going away (phone locks,
+// tunnel drops): once SMS go out, recording them and advancing the state must
+// finish. Call it after the state check, never before.
+func detach(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), batchTimeout)
+}
+
 // requireState returns ErrWrongState unless the current state is one of ok.
 func (r *Round) requireState(ctx context.Context, ok ...State) (State, error) {
 	s, err := r.state(ctx, r.st)
@@ -217,7 +227,8 @@ func (r *Round) requireState(ctx context.Context, ok ...State) (State, error) {
 
 // send delivers a validated batch. In dry-run it logs the masked texts and
 // changes nothing else. Otherwise it records a message per accepted SMS and
-// reports failures by person name; it returns an error only if all fail.
+// reports failures by person name; it returns an error if all fail, or the
+// first recording error (after attempting every SMS).
 func (r *Round) send(ctx context.Context, kind string, batch []outgoing) (Outcome, error) {
 	var out Outcome
 	if len(batch) == 0 {
@@ -242,7 +253,7 @@ func (r *Round) send(ctx context.Context, kind string, batch []outgoing) (Outcom
 	for _, p := range people {
 		names[p.ID] = p.Name
 	}
-	var firstErr error
+	var firstErr, recErr error
 	for _, o := range batch {
 		res, err := r.snd.Send(ctx, o.sms)
 		if err != nil {
@@ -257,15 +268,15 @@ func (r *Round) send(ctx context.Context, kind string, batch []outgoing) (Outcom
 		if _, err := r.st.RecordMessage(ctx, store.Message{
 			PersonID: o.personID, Kind: kind, ProviderID: res.ProviderID, Status: res.Status,
 			Segments: smstext.Segments(o.sms.Text), SentAt: r.opts.Now(),
-		}); err != nil {
-			// The SMS went out; callers still act on out.sent.
-			return out, err
+		}); err != nil && recErr == nil {
+			// The SMS went out; keep going and let callers act on out.sent.
+			recErr = err
 		}
 	}
 	if out.Sent == 0 {
 		return out, locale.M("send.all_failed", "count", strconv.Itoa(len(batch)), "error", firstErr.Error())
 	}
-	return out, nil
+	return out, recErr
 }
 
 // batchError returns the first problem as an error, or nil.
@@ -297,6 +308,8 @@ func (r *Round) SendGreetings(ctx context.Context) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	people, err := r.ungreeted(ctx)
 	if err != nil {
 		return Outcome{}, err
@@ -352,6 +365,8 @@ func (r *Round) SendReminders(ctx context.Context) (Outcome, error) {
 	if _, err := r.requireState(ctx, Collecting); err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	people, err := r.withoutItems(ctx)
 	if err != nil {
 		return Outcome{}, err
@@ -371,6 +386,8 @@ func (r *Round) ResendGreeting(ctx context.Context, personID int64) (Outcome, er
 	if err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	people, err := r.st.People(ctx)
 	if err != nil {
 		return Outcome{}, err
@@ -420,6 +437,8 @@ func (r *Round) SendTestSMS(ctx context.Context) (TestResult, error) {
 	if r.cfg.OrganiserPhone == "" {
 		return TestResult{}, locale.M("send.no_organiser_phone")
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	code, err := randCode(r.opts.Rand)
 	if err != nil {
 		return TestResult{}, err

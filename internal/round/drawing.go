@@ -181,6 +181,8 @@ func (r *Round) SendResults(ctx context.Context) (Outcome, error) {
 	if _, err := r.requireState(ctx, Drawn); err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	batch, problems, err := r.storedResults(ctx, 0)
 	if err != nil {
 		return Outcome{}, err
@@ -206,6 +208,8 @@ func (r *Round) ResendResult(ctx context.Context, personID int64) (Outcome, erro
 	if _, err := r.requireState(ctx, Delivered, ChangePending); err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	batch, problems, err := r.storedResults(ctx, personID)
 	if err != nil {
 		return Outcome{}, err
@@ -334,6 +338,8 @@ func (r *Round) ConfirmChange(ctx context.Context, text string) (Outcome, error)
 	if _, err := r.requireState(ctx, ChangePending); err != nil {
 		return Outcome{}, err
 	}
+	ctx, cancel := detach(ctx)
+	defer cancel()
 	pl, err := r.planChange(ctx, text)
 	if err != nil {
 		return Outcome{}, err

@@ -367,3 +367,121 @@ func TestRecordFailureStillMarksSent(t *testing.T) {
 		t.Fatalf("resent: err=%v sent=%+v", err, fake.Sent)
 	}
 }
+
+// cancelSender cancels the request context after the first accepted SMS, like
+// a client that disconnects mid-batch. It honours ctx like a real gateway.
+type cancelSender struct {
+	*sender.Fake
+	cancel context.CancelFunc
+}
+
+func (c *cancelSender) Send(ctx context.Context, m sender.SMS) (sender.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return sender.Result{}, err
+	}
+	res, err := c.Fake.Send(ctx, m)
+	if err == nil {
+		c.cancel()
+	}
+	return res, err
+}
+
+func TestSendGreetingsSurvivesClientDisconnect(t *testing.T) {
+	r, st, fake, _ := newTestRound(t, defaultYAML)
+	mustSync(t, r)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	out, err := r.SendGreetings(ctx)
+	if err != nil || out.Sent != 3 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	if s, _ := r.State(context.Background()); s != Collecting {
+		t.Errorf("state %s", s)
+	}
+	for _, n := range []string{"Maciej", "Ania", "Tomek"} {
+		if !personByName(t, st, n).Greeted {
+			t.Errorf("%s not greeted", n)
+		}
+	}
+	if countKind(t, st, "greeting") != 3 {
+		t.Error("greetings not recorded")
+	}
+	fake.Sent = nil
+	if _, err := r.SendGreetings(context.Background()); err != nil || len(fake.Sent) != 0 {
+		t.Fatalf("resent: %v %+v", err, fake.Sent)
+	}
+}
+
+func TestSendResultsSurvivesClientDisconnect(t *testing.T) {
+	r, st, fake, _ := drawnRound(t, defaultYAML)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	out, err := r.SendResults(ctx)
+	if err != nil || out.Sent != 3 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	mustState(t, r, Delivered)
+	if countKind(t, st, "result") != 3 {
+		t.Error("results not recorded")
+	}
+	fake.Sent = nil
+	if _, err := r.SendResults(context.Background()); !errors.Is(err, ErrWrongState) || len(fake.Sent) != 0 {
+		t.Fatalf("second press: %v %+v", err, fake.Sent)
+	}
+}
+
+func TestSendRemindersAndResendSurviveClientDisconnect(t *testing.T) {
+	r, st, fake, _ := newTestRound(t, defaultYAML)
+	mustSync(t, r)
+	setState(t, st, Collecting)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	out, err := r.SendReminders(ctx)
+	if err != nil || out.Sent != 3 || countKind(t, st, "reminder") != 3 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel2}
+	id := personByName(t, st, "Ania").ID
+	if out, err := r.ResendGreeting(ctx2, id); err != nil || out.Sent != 1 || !personByName(t, st, "Ania").Greeted {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+}
+
+func TestSendTestSMSSurvivesClientDisconnect(t *testing.T) {
+	r, st, fake, _ := newTestRound(t, testYAML("organiser_phone: \"+48600999999\"\n", pMaciej, pAnia, pTomek))
+	mustSync(t, r)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.snd = &cancelSender{Fake: fake, cancel: cancel}
+	if _, err := r.SendTestSMS(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if countKind(t, st, "test") != 1 {
+		t.Error("test SMS not recorded")
+	}
+}
+
+// A RecordMessage error must not stop the batch: later people are still
+// texted, counted, and provider failures still listed.
+func TestRecordErrorDoesNotStopBatch(t *testing.T) {
+	r, st, fake, _ := newTestRound(t, defaultYAML)
+	mustSync(t, r)
+	// Ania is deleted when Maciej's SMS is accepted, so recording Ania fails.
+	r.snd = &deletingSender{Fake: fake, st: st, phone: pMaciej.Phone, id: personByName(t, st, "Ania").ID}
+	fake.FailTo = map[string]bool{pTomek.Phone: true}
+	out, err := r.SendGreetings(context.Background())
+	if err == nil {
+		t.Fatal("expected the record error")
+	}
+	if out.Sent != 2 || len(out.Failed) != 1 || out.Failed[0] != "Tomek" || len(fake.Sent) != 2 {
+		t.Fatalf("out=%+v sent=%d", out, len(fake.Sent))
+	}
+	if !personByName(t, st, "Maciej").Greeted {
+		t.Error("Maciej not greeted")
+	}
+}
