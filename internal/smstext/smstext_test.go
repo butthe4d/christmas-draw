@@ -59,10 +59,10 @@ func TestStripNonGSM(t *testing.T) {
 
 func TestTransliterateNormalizesDecomposedInput(t *testing.T) {
 	cases := map[string]string{
-		"a\u0328":       "a", // decomposed a-ogonek: no stray combining mark
+		"a\u0328":         "a", // decomposed a-ogonek: no stray combining mark
 		"Zo\u0301\u0142w": "Zolw",
-		"e\u0301":       "é", // composes to a GSM-7 letter and is kept
-		"c\u030c":       "c",
+		"e\u0301":         "é", // composes to a GSM-7 letter and is kept
+		"c\u030c":         "c",
 	}
 	for in, want := range cases {
 		if got := Transliterate(in); got != want {

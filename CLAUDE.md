@@ -13,12 +13,14 @@ Go is at `/usr/local/go/bin` (`export PATH=/usr/local/go/bin:$PATH`). Go 1.26.8 
 - One test: `go test ./internal/round -run TestName -v`
 - Integration test against the gsmservice sandbox (not run by default):
   `GSMSERVICE_SANDBOX_TOKEN=... go test -tags integration ./internal/sender`
-- Run: `./christmas-draw check|serve|reset|admin-link [-config config.yaml] [-db christmas-draw.db]`
-- Docker: `docker build -t christmas-draw .`
+- Run (`reset` also deletes `dry-run.log`; `check` lists normalised numbers): `./christmas-draw check|serve|reset|admin-link [-config config.yaml] [-db christmas-draw.db]`
+- Docker: `docker build -t christmas-draw .` (distroless nonroot, uid 65532; `/data` must be writable by it)
 
 ## Architecture
 
 One Go binary with subcommands (`cmd/christmas-draw`). The `round` package owns the lifecycle state machine (SETUP, COLLECTING, DRAWN, DELIVERED, CHANGE_PENDING) and every rule; all its exported actions hold one mutex and re-read state inside it. It sits on a SQLite store (`modernc.org/sqlite`, pure Go), a pure draw engine (`draw`), a pure SMS-text/message layer (`smstext`, `message`), and a `Sender` interface (real gsmservice client in `sender`, or the in-memory `sender.Fake` for tests). The `web` package is a thin server-rendered `html/template` layer over `round`. Dry-run is decided inside `round`: it appends to a log file and changes nothing. Config (`config`) is YAML, validated into `locale.Msg` problems. All user-visible text lives in `internal/locale/locales/<lang>.json`.
+
+Batch actions that send SMS (`send` and its callers in `round`) switch to a detached context (`detach`) after the state check, so a client disconnect cannot leave sent SMS unrecorded or the state un-advanced.
 
 The spec is `docs/superpowers/specs/2026-10-23-christmas-draw-design.md`.
 

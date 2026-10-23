@@ -47,8 +47,8 @@ Commands (all accept `-config` (default `config.yaml`) and `-db` (default
 | Command | What it does |
 |---|---|
 | `serve` (default) | Syncs config into the database and serves the site. `-addr` sets the listen address (default `:8080`). Stops cleanly on Ctrl-C / SIGTERM. |
-| `check` | Validates config, checks that a draw is possible, renders the greeting. Prints `OK` or the problems and exits 1. Never touches the database. |
-| `reset` | Wipes the database after you type `reset`. `-yes` skips the prompt. |
+| `check` | Validates config, lists every person with the number as it will be dialled, checks that a draw is possible, renders the greeting. Prints `OK` or the problems and exits 1. Never touches the database. |
+| `reset` | Stop the server first. Wipes the database and `dry-run.log` after you type `reset`. `-yes` skips the prompt. |
 | `admin-link` | Prints the admin URL from the database; exits 1 if there is none yet. |
 
 The dry-run log is `dry-run.log`, next to the database file.
@@ -58,6 +58,7 @@ The dry-run log is `dry-run.log`, next to the database file.
 ```sh
 docker build -t christmas-draw .
 mkdir data && cp config.example.yaml data/config.yaml     # edit it
+sudo chown -R 65532:65532 data                           # the container runs as uid 65532
 docker run -d --name christmas-draw -p 8080:8080 \
   -e CHRISTMAS_DRAW_SMS_TOKEN=your-token \
   -v "$PWD/data:/data" christmas-draw
@@ -66,7 +67,10 @@ docker run --rm -v "$PWD/data:/data" christmas-draw admin-link -config /data/con
 ```
 
 The image runs `serve -config /data/config.yaml -db /data/christmas-draw.db`.
-The database and the dry-run log live in the `/data` volume.
+The database and the dry-run log live in the `/data` volume. The container
+does not run as root (uid 65532), so `/data` must be writable by that user:
+`chown 65532:65532` a bind-mounted directory, as above. A named volume
+(`-v christmas-draw-data:/data`) inherits the right ownership from the image.
 
 ## 3. Config reference
 
@@ -86,15 +90,16 @@ fall back to a default.
 | `organiser_phone` | empty | Receives the SMS test on the admin page. |
 | `max_result_segments` | `3` | Longest allowed result SMS, in segments. |
 | `language` | `en` | `en` or `pl`. Default web language and default SMS texts. |
-| `default_country_code` | empty | e.g. `+48`, prepended to numbers written without a prefix. |
+| `default_country_code` | empty | e.g. `+48`, prepended to numbers written without a prefix. One leading trunk `0` is dropped first (`07700 900123` with `+44` becomes `+447700900123`). `00` counts as `+`. |
 | `people` | required, at least 3 | List of `{ name, phone }`. Names must be unique; phones are normalised to E.164. |
 | `couples` | empty | Pairs of names that must not draw each other (when `exclude_couples`). One couple per person. |
 | `exclusions` | empty | Extra forbidden pairs, both directions. |
 | `sms.provider` | `gsmservice` | The only provider. |
-| `sms.token` | required | API token. `CHRISTMAS_DRAW_SMS_TOKEN` overrides it when set. |
+| `sms.token` | required unless `dry_run` is on | API token. `CHRISTMAS_DRAW_SMS_TOKEN` overrides it when set. The SMS test needs it even in dry-run. |
 | `sms.sender` | empty | Optional sender name. |
 | `sms.server` | `prod` | `prod` or `sandbox`. |
 | `sms.price_per_segment` | `0.14` | Used for cost estimates on the admin page. |
+| `sms.currency` | `PLN` | Shown next to costs. |
 
 SMS are sent as GSM-7: Polish letters are transliterated (ą becomes a, and so
 on). A segment holds 160 characters (153 when a message needs several).
@@ -103,20 +108,30 @@ summary only; the web page shows them intact.
 
 ## 4. A typical season
 
-1. **Check.** Edit `config.yaml`, run `christmas-draw check`. Fix what it reports.
-2. **Start** with `dry_run: true` and open the admin page.
-3. **SMS test.** With `organiser_phone` set, press the SMS test on the admin
-   page. It is the one send that ignores `dry_run` (and it costs one real SMS),
-   so you can prove the gateway works before anything goes to the family.
-4. **Greetings.** Preview, then send. (In dry-run the texts go to `dry-run.log`
-   with tokens masked, and nothing changes.)
-5. **Reminders.** Resend to those who have not written a list. The draw is
+Dry-run has two faces. Greetings in dry-run only write to `dry-run.log`: they
+change no state, so the round stays in SETUP and nobody counts as greeted. The
+draw needs the round to be in COLLECTING, which only real greetings produce.
+Hence the season goes in phases, each ended by editing `dry_run` and
+restarting.
+
+1. **Rehearse with `dry_run: true`.** Run `christmas-draw check` and fix what
+   it reports; read the numbers it lists. Start the server, open the admin
+   page, press the SMS test (set `organiser_phone`; it is the one send that
+   ignores `dry_run`, costs one real SMS, and needs `sms.token`). Then send
+   the greetings in dry-run and read the texts in `dry-run.log` (tokens are
+   masked).
+2. **Go live with `dry_run: false`, restart.** Send the greetings for real.
+   The round moves to COLLECTING. Send reminders as needed; the draw is
    blocked until everybody has at least one item.
-6. **Draw, dry-run first.** A dry-run draw is thrown away; it only shows that a
-   draw is possible. Then switch `dry_run` off, restart, and draw for real. The
-   admin page shows counts and cost, not the pairs.
-7. **Results.** Send the result SMS. Use "resend" for anyone whose SMS failed
-   or whose number was wrong. Delivery status is shown per person.
+3. **Optional: inspect the result texts.** Set `dry_run: true`, restart, and
+   draw. A dry-run draw is thrown away; the result SMS go to `dry-run.log`.
+   Note that this log then shows who draws whom. Delete it afterwards if you
+   want to stay surprised.
+4. **Draw for real.** Set `dry_run: false`, restart, draw. The admin page
+   previews the result SMS without dry-run: counts, segments, cost and any
+   problems, never the texts or pairs. Review it, then send the results. Use
+   "resend" for anyone whose SMS failed or whose number was wrong. Delivery
+   status is shown per person.
 
 Only after the result SMS go out do people see who they drew on their page.
 
@@ -131,7 +146,8 @@ Edit `config.yaml` and restart. The app compares it with the database:
   you draw again once the newcomer has a list.
 - Changes after results were sent: the round goes to "change pending". The
   admin page asks you to review and send an emergency SMS to everyone; wish
-  lists are kept and you draw again.
+  lists are kept and you draw again. If that SMS fails for someone, the admin
+  page shows "Resend change notice" next to them until the next draw.
 
 Cosmetic edits (`"Ania "` vs `"Ania"`, `600 100 200` vs `+48600100200`) are not
 changes: a person is identified by their trimmed name.
@@ -174,8 +190,9 @@ so links are random 16-character tokens and are only sent by SMS.
 ./christmas-draw reset      # type "reset" to confirm; -yes skips the prompt
 ```
 
-This wipes people, wish lists, the draw, sent-message records and the admin
-token. The next `serve` creates new tokens and prints a new admin URL.
+Stop the server first. This wipes people, wish lists, the draw, sent-message
+records and the admin token, and deletes `dry-run.log` next to the database
+(it may contain pairs). The next `serve` creates new tokens and prints a new admin URL.
 
 ## 9. Adding a language
 
