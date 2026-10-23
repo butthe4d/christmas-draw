@@ -3,6 +3,7 @@ module github.com/butthe4d/christmas-draw
 go 1.26.8
 
 require (
+	github.com/gsmservice-pl/messaging-sdk-go/v4 v4.0.1
 	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.61.0
