@@ -1,0 +1,7 @@
+{
+  "lang.name": "English",
+  "sms.result": "{name}, this year you give a present to: {receiver}. Wishes: {summary} Full list: {link}",
+  "sms.reminder": "{name}, we are still waiting for your wish list for the gift draw: {link}",
+  "sms.emergency": "Change in the gift draw! The previous draw is cancelled, you will get a new one soon.",
+  "sms.test": "christmas-draw test {time} code {code}"
+}

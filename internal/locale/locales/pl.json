@@ -1,0 +1,7 @@
+{
+  "lang.name": "Polski",
+  "sms.result": "{name}, w tym roku obdarowujesz: {receiver}. Zyczenia: {summary} Cala lista: {link}",
+  "sms.reminder": "{name}, czekamy na Twoja liste zyczen do losowania prezentow: {link}",
+  "sms.emergency": "Zmiana w losowaniu! Poprzednie losowanie jest niewazne, wkrotce dostaniesz nowe.",
+  "sms.test": "christmas-draw test {time} kod {code}"
+}
