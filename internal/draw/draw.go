@@ -11,8 +11,9 @@ import (
 )
 
 // maxShuffleAttempts is how many random permutations are tried before the
-// draw falls back to randomized backtracking.
-const maxShuffleAttempts = 200000
+// draw falls back to randomized backtracking. A variable so tests can force
+// the fallback.
+var maxShuffleAttempts = 200000
 
 // Rules says which giver may draw which receiver.
 type Rules struct {

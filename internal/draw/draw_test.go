@@ -96,28 +96,33 @@ func bruteFeasible(r Rules) bool {
 	return rec(0)
 }
 
+func randomRules(rng *mrand.Rand) Rules {
+	n := 3 + rng.IntN(13)
+	names := make([]string, n)
+	for i := range names {
+		names[i] = fmt.Sprintf("P%02d", i)
+	}
+	var couples, excl [][2]string
+	for k := rng.IntN(n/2 + 1); k > 0; k-- {
+		a, b := rng.IntN(n), rng.IntN(n)
+		if a != b {
+			couples = append(couples, [2]string{names[a], names[b]})
+		}
+	}
+	for k := rng.IntN(n + 1); k > 0; k-- {
+		a, b := rng.IntN(n), rng.IntN(n)
+		if a != b {
+			excl = append(excl, [2]string{names[a], names[b]})
+		}
+	}
+	return NewRules(names, couples, excl, rng.IntN(2) == 0)
+}
+
 func TestDrawInvariantsProperty(t *testing.T) {
 	rng := mrand.New(mrand.NewPCG(1, 2))
 	for iter := 0; iter < 2000; iter++ {
-		n := 3 + rng.IntN(13)
-		names := make([]string, n)
-		for i := range names {
-			names[i] = fmt.Sprintf("P%02d", i)
-		}
-		var couples, excl [][2]string
-		for k := rng.IntN(n/2 + 1); k > 0; k-- {
-			a, b := rng.IntN(n), rng.IntN(n)
-			if a != b {
-				couples = append(couples, [2]string{names[a], names[b]})
-			}
-		}
-		for k := rng.IntN(n + 1); k > 0; k-- {
-			a, b := rng.IntN(n), rng.IntN(n)
-			if a != b {
-				excl = append(excl, [2]string{names[a], names[b]})
-			}
-		}
-		r := NewRules(names, couples, excl, rng.IntN(2) == 0)
+		r := randomRules(rng)
+		n := len(r.Names())
 
 		ferr := Feasible(r)
 		if n <= 7 {
@@ -161,6 +166,59 @@ func TestDrawUniformSmall(t *testing.T) {
 	for k, c := range counts {
 		if c < 2700 || c > 3300 {
 			t.Errorf("assignment %s drawn %d times", k, c)
+		}
+	}
+}
+
+func forcedPairs() (Rules, map[string]string) {
+	names := []string{"A", "B", "C", "D", "E", "F"}
+	allowed := map[string]string{"A": "B", "B": "A", "C": "D", "D": "C", "E": "F", "F": "E"}
+	var excl [][2]string
+	for i, g := range names {
+		for _, x := range names[i+1:] {
+			if allowed[g] != x {
+				excl = append(excl, [2]string{g, x})
+			}
+		}
+	}
+	return NewRules(names, nil, excl, true), allowed
+}
+
+// TestDrawBacktrackFallback forces the backtracking path by allowing zero
+// shuffle attempts.
+func TestDrawBacktrackFallback(t *testing.T) {
+	old := maxShuffleAttempts
+	maxShuffleAttempts = 0
+	defer func() { maxShuffleAttempts = old }()
+
+	rng := mrand.New(mrand.NewPCG(3, 4))
+	drawn := 0
+	for iter := 0; iter < 500; iter++ {
+		r := randomRules(rng)
+		if Feasible(r) != nil {
+			continue
+		}
+		a, err := Draw(r, rand.Reader)
+		if err != nil {
+			t.Fatalf("iter %d: %v", iter, err)
+		}
+		if err := Check(r, a); err != nil {
+			t.Fatalf("iter %d: %v", iter, err)
+		}
+		drawn++
+	}
+	if drawn < 100 {
+		t.Fatalf("only %d feasible setups exercised", drawn)
+	}
+
+	r, allowed := forcedPairs()
+	a, err := Draw(r, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for g, want := range allowed {
+		if a[g] != want {
+			t.Errorf("%s -> %s, want %s", g, a[g], want)
 		}
 	}
 }
