@@ -1,7 +1,9 @@
 # christmas-draw configuration. Copy to config.yaml and edit.
 
-# Used to build links in SMS: <base_url>/p/<token>
-base_url: "https://swieta.example.ts.net"
+# Used to build links in SMS: <base_url>/p/<token>. Set it to your public
+# address (e.g. a Tailscale Funnel or Cloudflare Tunnel URL). The localhost
+# value lets `christmas-draw demo` run this file as it is.
+base_url: "http://localhost:8080"
 
 # Required. Must contain {link}; {name} is available. Sent as GSM-7 after
 # transliteration (Polish letters lose their accents). Max 2 SMS segments.
@@ -21,21 +23,25 @@ max_result_segments: 3           # default 3
 language: en                     # en | pl; default en. Web UI default and default SMS texts
 default_country_code: "+48"      # added to numbers written without a prefix
 
-people:                          # at least 3
+people:                          # at least 3. Sample numbers: replace with real ones
   - { name: Maciej, phone: "+48600100200" }
   - { name: Ania,   phone: "600 100 201" }
   - { name: Tomek,  phone: "600-100-202" }
-  - { name: Kasia,  phone: "+48600100203" }
+  - { name: Ola,    phone: "+48 600 100 203" }
+  - { name: Kasia,  phone: "600100204" }
+  - { name: Piotr,  phone: "600100205" }
+  - { name: Zosia,  phone: "600100206" }
 
 couples:                         # not allowed to draw each other (if exclude_couples)
   - [Maciej, Ania]
+  - [Tomek, Ola]
 
 exclusions:                      # extra forbidden pairs, both directions
-  - [Ania, Tomek]
+  - [Kasia, Piotr]               # e.g. siblings who live together
 
 sms:
   provider: gsmservice
-  token: "..."                   # or set CHRISTMAS_DRAW_SMS_TOKEN
+  token: ""                      # required when dry_run is false; or set CHRISTMAS_DRAW_SMS_TOKEN
   sender: ""                     # optional sender name
   server: prod                   # prod | sandbox
   price_per_segment: 0.14        # for cost estimates

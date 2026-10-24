@@ -2,3 +2,4 @@
 *.db
 dry-run.log
 config.yaml
+/demo/

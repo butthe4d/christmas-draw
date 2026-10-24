@@ -24,6 +24,24 @@ to a log file instead of sending them.
 
 ## 2. Quick start
 
+### Try the demo first
+
+No account or config needed:
+
+```sh
+CGO_ENABLED=0 go build -o christmas-draw ./cmd/christmas-draw
+./christmas-draw demo                    # lists filled in, draw not made yet
+./christmas-draw demo -stage delivered   # results already out: open a person's page to see who they drew
+```
+
+The demo runs `config.example.yaml` (7 people, two couples, one "never draw
+each other" pair) with sample wish lists. It writes its files to `./demo`
+(`-dir` to change), starts from scratch on every run, and prints the admin
+link and every person's link. It always runs in dry-run with a fake gateway,
+so it can never send an SMS. `-addr` changes the port (default `:8080`).
+
+### For real
+
 You need an API token from gsmservice (a sandbox token works for trying it out).
 
 ### Binary

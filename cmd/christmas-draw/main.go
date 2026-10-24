@@ -1,4 +1,5 @@
-// Command christmas-draw runs the family gift draw: serve, check, reset, admin-link.
+// Command christmas-draw runs the family gift draw: serve, check, reset,
+// admin-link, and demo.
 package main
 
 import (
@@ -36,6 +37,7 @@ func main() {
 type options struct {
 	config, db, addr string
 	yes              bool
+	dir, stage       string // demo only
 }
 
 // run is main without os.Exit, so tests can drive it.
@@ -45,7 +47,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		cmd, args = args[0], args[1:]
 	}
 	switch cmd {
-	case "serve", "check", "reset", "admin-link":
+	case "serve", "check", "reset", "admin-link", "demo":
 	default:
 		fmt.Fprintln(stderr, locale.M("cli.unknown_command", "command", cmd).In(defaultLang))
 		fmt.Fprintln(stderr, locale.T(defaultLang, "cli.usage", nil))
@@ -59,6 +61,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch cmd {
 	case "serve":
 		fs.StringVar(&o.addr, "addr", ":8080", "listen address")
+	case "demo":
+		fs.StringVar(&o.addr, "addr", ":8080", "listen address")
+		fs.StringVar(&o.dir, "dir", "demo", "directory for the demo's config, database and dry-run log")
+		fs.StringVar(&o.stage, "stage", stageCollecting, "where the demo starts: collecting or delivered")
 	case "reset":
 		fs.BoolVar(&o.yes, "yes", false, "skip the confirmation prompt")
 	}
@@ -75,6 +81,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runReset(o, stdin, stdout, stderr)
 	case "admin-link":
 		return runAdminLink(o, stdout, stderr)
+	case "demo":
+		return runDemo(o, stdout, stderr)
 	}
 	return runServe(o, stdout, stderr)
 }
@@ -262,8 +270,18 @@ func runServe(o options, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, locale.M("cli.admin_page", "url", adminURL(cfg, token)).In(lang))
 	}
 
+	log.Info("listening", "addr", o.addr, "dry_run", cfg.DryRun)
+	if err := listen(ctx, r, cfg, o.addr, log); err != nil {
+		return fail(err)
+	}
+	return 0
+}
+
+// listen serves the web UI on addr until ctx is cancelled, then shuts down
+// gracefully.
+func listen(ctx context.Context, r *round.Round, cfg *config.Config, addr string, log *slog.Logger) error {
 	srv := &http.Server{
-		Addr:              o.addr,
+		Addr:              addr,
 		Handler:           web.NewServer(r, cfg),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -273,18 +291,14 @@ func runServe(o options, stdout, stderr io.Writer) int {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("listening", "addr", o.addr, "dry_run", cfg.DryRun)
 
 	select {
 	case err := <-errc:
-		return fail(err)
+		return err
 	case <-ctx.Done():
 	}
 	log.Info("shutting down")
 	sctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(sctx); err != nil {
-		return fail(err)
-	}
-	return 0
+	return srv.Shutdown(sctx)
 }

@@ -14,6 +14,7 @@ Go is at `/usr/local/go/bin` (`export PATH=/usr/local/go/bin:$PATH`). Go 1.26.8 
 - Integration test against the gsmservice sandbox (not run by default):
   `GSMSERVICE_SANDBOX_TOKEN=... go test -tags integration ./internal/sender`
 - Run (`reset` also deletes `dry-run.log`; `check` lists normalised numbers): `./christmas-draw check|serve|reset|admin-link [-config config.yaml] [-db christmas-draw.db]`
+- Demo (fresh sample data in `./demo`, dry-run + fake gateway, prints all links): `./christmas-draw demo [-stage collecting|delivered] [-addr :8080] [-dir demo]`
 - Docker: `docker build -t christmas-draw .` (distroless nonroot, uid 65532; `/data` must be writable by it)
 
 ## Architecture
@@ -32,6 +33,7 @@ The spec is `docs/superpowers/specs/2026-10-23-christmas-draw-design.md`.
 - The admin page never shows a person's token or result SMS content. Pairs are shown only through Unseal, which records the first view time.
 - Dry-run never changes state, never records messages, never saves a draw. Its only side effect is appending to the dry-run log (`dry-run.log` next to the DB). The SMS test is the only send that ignores `dry_run`.
 - `check` and `admin-link` must not create or touch the DB file.
+- `demo` is the only command that prints person links; it serves with `dry_run` forced on and `sender.Demo` (never contacts a gateway). Its people must match `demoWishes` in `cmd/christmas-draw/demo.go` (`TestExampleConfigShape`).
 - SMS text is always transliterated before checks and sending (GSM-7). Segment limits: greeting 2, reminder 2, emergency 2, result `max_result_segments`, SMS test 1.
 - Localization: no user-visible literals in Go code or templates. Add each key to both `en.json` and `pl.json` (`TestLocalesComplete` enforces equal key sets). Functions that report problems return `locale.Msg`, never formatted strings.
 - Person identity across config edits is the trimmed name (case-sensitive); phones are compared after normalisation.

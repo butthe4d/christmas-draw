@@ -136,7 +136,7 @@
   "admin.flash.wrong_state": "Ta czynność nie jest możliwa w obecnym stanie. Nic nie wysłano.",
   "admin.flash.error": "Coś poszło nie tak. Sprawdź stan poniżej, zanim spróbujesz ponownie.",
   "admin.flash.failed": "Nie udało się dla",
-  "cli.usage": "Użycie: christmas-draw [serve|check|reset|admin-link] [-config PLIK] [-db PLIK] [-addr ADRES] [-yes]",
+  "cli.usage": "Użycie: christmas-draw [serve|check|reset|admin-link|demo] [-config PLIK] [-db PLIK] [-addr ADRES] [-yes] [-dir KATALOG] [-stage collecting|delivered]",
   "cli.unknown_command": "Nieznane polecenie \"{command}\".",
   "cli.error": "Błąd: {error}",
   "cli.person_line": "{name}: {phone}",
@@ -156,5 +156,9 @@
   "admin.flash.result_sent_dryrun": "Tryb próbny: wynik zapisany w dzienniku próbnym: {n}.",
   "admin.flash.results_sent_dryrun": "Tryb próbny: wyniki zapisane w dzienniku próbnym: {n}.",
   "admin.flash.change_sent_dryrun": "Tryb próbny: informacje o zmianie zapisane w dzienniku próbnym: {n}.",
-  "admin.flash.notice_sent_dryrun": "Tryb próbny: informacja o zmianie zapisana w dzienniku próbnym: {n}."
+  "admin.flash.notice_sent_dryrun": "Tryb próbny: informacja o zmianie zapisana w dzienniku próbnym: {n}.",
+  "cli.demo_ready": "Demo gotowe w {dir} (etap: {stage}). Każde uruchomienie zaczyna od nowa. Tryb próbny jest włączony, a SMS-y trafiają do udawanej bramki: nic nie zostanie wysłane.",
+  "cli.demo_people": "Strony list życzeń:",
+  "cli.demo_person": "  {name}: {url}",
+  "cli.demo_bad_stage": "Nieznany etap \"{stage}\". Użyj collecting albo delivered."
 }

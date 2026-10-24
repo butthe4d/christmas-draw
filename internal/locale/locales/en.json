@@ -136,7 +136,7 @@
   "admin.flash.wrong_state": "That action is not possible in the current state. Nothing was sent.",
   "admin.flash.error": "Something went wrong. Check the state below before trying again.",
   "admin.flash.failed": "Failed for",
-  "cli.usage": "Usage: christmas-draw [serve|check|reset|admin-link] [-config FILE] [-db FILE] [-addr ADDR] [-yes]",
+  "cli.usage": "Usage: christmas-draw [serve|check|reset|admin-link|demo] [-config FILE] [-db FILE] [-addr ADDR] [-yes] [-dir DIR] [-stage collecting|delivered]",
   "cli.unknown_command": "Unknown command \"{command}\".",
   "cli.error": "Error: {error}",
   "cli.person_line": "{name}: {phone}",
@@ -156,5 +156,9 @@
   "admin.flash.result_sent_dryrun": "Dry run: result written to the dry-run log: {n}.",
   "admin.flash.results_sent_dryrun": "Dry run: results written to the dry-run log: {n}.",
   "admin.flash.change_sent_dryrun": "Dry run: change notices written to the dry-run log: {n}.",
-  "admin.flash.notice_sent_dryrun": "Dry run: change notice written to the dry-run log: {n}."
+  "admin.flash.notice_sent_dryrun": "Dry run: change notice written to the dry-run log: {n}.",
+  "cli.demo_ready": "Demo ready in {dir} (stage: {stage}). Every run starts it from scratch. Dry-run is on and SMS go to a fake gateway: nothing is ever sent.",
+  "cli.demo_people": "Wish-list pages:",
+  "cli.demo_person": "  {name}: {url}",
+  "cli.demo_bad_stage": "Unknown stage \"{stage}\". Use collecting or delivered."
 }
