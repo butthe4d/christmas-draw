@@ -1,0 +1,21 @@
+{{define "layout"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{t "app.title"}}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+<span class="brand">&#127876; {{t "app.title"}}</span>
+<nav class="langs" aria-label="{{t "app.language"}}">
+{{range .Langs}}<a href="{{$.Path}}?lang={{.Code}}" hreflang="{{.Code}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>
+{{end}}</nav>
+</header>
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}

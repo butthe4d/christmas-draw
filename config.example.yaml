@@ -1,0 +1,48 @@
+# christmas-draw configuration. Copy to config.yaml and edit.
+
+# Used to build links in SMS: <base_url>/p/<token>. Set it to your public
+# address (e.g. a Tailscale Funnel or Cloudflare Tunnel URL). The localhost
+# value lets `christmas-draw demo` run this file as it is.
+base_url: "http://localhost:8080"
+
+# Required. Must contain {link}; {name} is available. Sent as GSM-7 after
+# transliteration (Polish letters lose their accents). Max 2 SMS segments.
+greeting: "Hej {name}! W tym roku znow losujemy prezenty. Wpisz swoje zyczenia: {link}"
+
+# Optional; defaults depend on `language`.
+# result_template must contain {receiver} and {link}; {name} and {summary} are available.
+# result_template: "Wylosowales: {receiver}. Zyczenia: {summary} Pelna lista: {link}"
+# reminder_template: "{name}, czekamy na Twoja liste zyczen: {link}"   # needs {link}
+# emergency_template: "Zmiana w losowaniu! Dostaniesz nowe."
+
+exclude_couples: true            # default true
+lists_editable_after_draw: false
+dry_run: true                    # default true: nothing is sent, SMS go to the dry-run log
+organiser_phone: "+48600000000"  # optional; receives the SMS test
+max_result_segments: 3           # default 3
+language: en                     # en | pl; default en. Web UI default and default SMS texts
+default_country_code: "+48"      # added to numbers written without a prefix
+
+people:                          # at least 3. Sample numbers: replace with real ones
+  - { name: Maciej, phone: "+48600100200" }
+  - { name: Ania,   phone: "600 100 201" }
+  - { name: Tomek,  phone: "600-100-202" }
+  - { name: Ola,    phone: "+48 600 100 203" }
+  - { name: Kasia,  phone: "600100204" }
+  - { name: Piotr,  phone: "600100205" }
+  - { name: Zosia,  phone: "600100206" }
+
+couples:                         # not allowed to draw each other (if exclude_couples)
+  - [Maciej, Ania]
+  - [Tomek, Ola]
+
+exclusions:                      # extra forbidden pairs, both directions
+  - [Kasia, Piotr]               # e.g. siblings who live together
+
+sms:
+  provider: gsmservice
+  token: ""                      # required when dry_run is false; or set CHRISTMAS_DRAW_SMS_TOKEN
+  sender: ""                     # optional sender name
+  server: prod                   # prod | sandbox
+  price_per_segment: 0.14        # for cost estimates
+  currency: PLN                  # shown next to costs; default PLN

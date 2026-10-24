@@ -1,0 +1,10 @@
+{{define "content"}}
+<section class="card">
+<h1>{{t "admin.unseal.title"}}</h1>
+<p class="frozen">{{t "admin.unseal.warning"}}</p>
+<ul class="pairs">
+{{range .Pairs}}<li class="pair">{{.Giver}} &rarr; {{.Receiver}}</li>
+{{end}}</ul>
+<p><a href="/admin/{{.Token}}">{{t "admin.unseal.back"}}</a></p>
+</section>
+{{end}}

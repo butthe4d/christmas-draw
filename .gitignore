@@ -1,0 +1,5 @@
+/christmas-draw
+*.db
+dry-run.log
+config.yaml
+/demo/

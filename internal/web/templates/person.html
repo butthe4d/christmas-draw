@@ -1,0 +1,55 @@
+{{define "content"}}
+{{with .View.Receiver}}
+<section class="letter" aria-labelledby="letter-title">
+<p class="letter-kicker" id="letter-title">{{t "person.letter_title"}}</p>
+<p class="letter-intro">{{t "person.letter_intro"}}</p>
+<h2 class="letter-name">{{.Name}}</h2>
+{{if .Items}}
+<ul class="wishes">
+{{range .Items}}<li>
+<strong>{{.Title}}</strong>
+{{if .Note}}<span class="note">{{.Note}}</span>{{end}}
+{{if .Link}}<a class="shop" href="{{.Link}}" target="_blank" rel="noopener noreferrer">{{t "person.open_link"}}</a>{{end}}
+</li>
+{{end}}</ul>
+{{else}}<p>{{t "person.letter_empty" "name" .Name}}</p>{{end}}
+</section>
+{{end}}
+
+<section class="card">
+<h1>{{t "person.greeting" "name" .View.Name}}</h1>
+{{if .View.Editable}}<p>{{t "person.intro"}}</p>{{else}}<p class="frozen">{{t "person.frozen"}}</p>{{end}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+
+<h2>{{t "person.your_list"}}</h2>
+{{if .View.Items}}
+<ul class="items">
+{{range .View.Items}}<li>
+{{if $.View.Editable}}
+<form method="post" action="/p/{{$.Token}}/items/{{.ID}}" class="item-form">
+<label>{{t "person.title"}}<input name="title" value="{{if and (eq $.EditID .ID) $.Error}}{{$.Draft.Title}}{{else}}{{.Title}}{{end}}" required></label>
+<label>{{t "person.link"}}<input name="link" type="text" inputmode="url" value="{{if and (eq $.EditID .ID) $.Error}}{{$.Draft.Link}}{{else}}{{.Link}}{{end}}"></label>
+<label>{{t "person.note"}}<textarea name="note" rows="2">{{if and (eq $.EditID .ID) $.Error}}{{$.Draft.Note}}{{else}}{{.Note}}{{end}}</textarea></label>
+<div class="actions"><button type="submit">{{t "person.save"}}</button>
+<button type="submit" class="danger" formaction="/p/{{$.Token}}/items/{{.ID}}/delete" formnovalidate>{{t "person.delete"}}</button></div>
+</form>
+{{else}}
+<strong>{{.Title}}</strong>
+{{if .Note}}<span class="note">{{.Note}}</span>{{end}}
+{{if .Link}}<a class="shop" href="{{.Link}}" target="_blank" rel="noopener noreferrer">{{t "person.open_link"}}</a>{{end}}
+{{end}}
+</li>
+{{end}}</ul>
+{{else}}<p class="muted">{{t "person.empty"}}</p>{{end}}
+
+{{if .View.Editable}}
+<h2>{{t "person.add_item"}}</h2>
+<form method="post" action="/p/{{.Token}}/items" class="item-form add">
+<label>{{t "person.title"}}<input name="title" value="{{if eq .EditID 0}}{{.Draft.Title}}{{end}}" required></label>
+<label>{{t "person.link"}}<input name="link" type="text" inputmode="url" value="{{if eq .EditID 0}}{{.Draft.Link}}{{end}}"></label>
+<label>{{t "person.note"}}<textarea name="note" rows="2">{{if eq .EditID 0}}{{.Draft.Note}}{{end}}</textarea></label>
+<div class="actions"><button type="submit">{{t "person.add_item"}}</button></div>
+</form>
+{{end}}
+</section>
+{{end}}
